@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Taxi Stable v14 FIREBASE</title>
+<title>Taxi</title>
 
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#f1c40f">
@@ -64,6 +64,7 @@ top:15px;
 left:10px;
 width:320px;
 z-index:10;
+transition: opacity 0.3s;
 }
 
 .box2 {
@@ -174,16 +175,16 @@ cursor:pointer;
 box-shadow:0 2px 8px rgba(0,0,0,0.2);
 }
 
-/* ДОПОЛНЕНИЕ: Стили для кнопок отмены и загрузки */
-.btn-cancel { background: #e74c3c; color: white; margin-top: 10px; }
-.loader { border: 3px solid #f3f3f3; border-top: 3px solid #f1c40f; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; display: inline-block; vertical-align: middle; margin-right: 8px; }
-@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(3600deg); } }
+/* НОВЫЕ СТИЛИ */
+.btn-cancel { background: #e74c3c; color: white; margin-top: 10px; width: 100%; }
+.loader { border: 3px solid #f3f3f3; border-top: 3px solid #f1c40f; border-radius: 50%; width: 18px; height: 18px; animation: spin 1s linear infinite; display: inline-block; vertical-align: middle; margin-right: 8px; }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 </style>
 </head>
 
 <body>
 
-<div id="driver-status" style="display:none; position:absolute; top:80px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); color:white; padding:10px 20px; border-radius:20px; z-index:1000; text-align:center; box-shadow:0 4px 10px rgba(0,0,0,0.2); width: 80%; max-width: 300px;"></div>
+<div id="driver-status" style="display:none; position:absolute; top:80px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); color:white; padding:15px 25px; border-radius:20px; z-index:1000; text-align:center; box-shadow:0 4px 15px rgba(0,0,0,0.3); width: 80%; max-width: 320px;"></div>
 
 <div class="start" id="start">
     <div class="box">
@@ -237,6 +238,18 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
     </div>
 </div>
 
+<div class="modal" id="modal-timeout">
+    <div class="modal-content" style="text-align:center;">
+        <div style="font-size: 50px; margin-bottom: 10px;">⏳</div>
+        <h3>Водитель не найден</h3>
+        <p style="color: #666; font-size: 14px; margin-bottom: 20px;">К сожалению, сейчас поблизости нет свободных машин. Хотите продолжить поиск или отменить заказ?</p>
+        <div class="row">
+            <button class="btn2" id="timeout-cancel" style="background:#eee;">Отменить</button>
+            <button class="btn2 order" id="timeout-continue">Продолжить</button>
+        </div>
+    </div>
+</div>
+
 <div class="ctrl">
     <button id="btn2d">2D</button>
     <button id="btn3d">3D</button>
@@ -262,7 +275,7 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
 
   let currentOrderId = null;
   let rejectedDrivers = [];
-  let searchTimer = null; // Таймер на 60 сек
+  let searchTimer = null;
   const alertSound = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
 
   function getDist(c1, c2) {
@@ -278,7 +291,7 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
       if (text) { 
           el.innerHTML = text; 
           if(showCancel) {
-              el.innerHTML += `<br><button class="btn btn-cancel" id="cancelOrderAction">Отменить заказ</button>`;
+              el.innerHTML += `<br><button class="btn btn-cancel" id="cancelOrderAction">Отменить поиск</button>`;
               setTimeout(() => {
                 const btn = document.getElementById('cancelOrderAction');
                 if(btn) btn.onclick = () => window.resetOrderUI();
@@ -289,9 +302,10 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
       else { el.style.display = 'none'; }
   }
 
-  // Функция сброса интерфейса при отмене или ошибке
+  // НОВОЕ: Сброс интерфейса и очистка базы
   window.resetOrderUI = async function() {
       clearTimeout(searchTimer);
+      searchTimer = null;
       if(currentOrderId) {
           await remove(ref(db, `orders/${currentOrderId}`));
           currentOrderId = null;
@@ -301,6 +315,17 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
       document.getElementById('panel').style.display = 'block';
       document.getElementById('top-search').style.pointerEvents = 'auto';
       document.getElementById('top-search').style.opacity = '1';
+  };
+
+  // Кнопки в модальном окне таймаута
+  document.getElementById('timeout-continue').onclick = () => {
+      document.getElementById('modal-timeout').style.display = 'none';
+      window.sendOrderToFirebase(); 
+  };
+
+  document.getElementById('timeout-cancel').onclick = () => {
+      document.getElementById('modal-timeout').style.display = 'none';
+      window.resetOrderUI();
   };
 
   window.trackDriver = function(driverId) {
@@ -332,17 +357,18 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
     document.getElementById('panel').style.display = 'none';
     document.getElementById('top-search').style.pointerEvents = 'none';
     document.getElementById('top-search').style.opacity = '0.5';
-    showStatus(`<div class="loader"></div> Ищем ближайшую машину...`, true);
+    showStatus(`<div class="loader"></div> Поиск машины...`, true);
 
-    // Запуск таймера 60 секунд (только при первом вызове)
+    // Установка таймера на 60 секунд
     if(!searchTimer) {
         searchTimer = setTimeout(() => {
-            if(confirm("Водители не найдены. Попробовать еще раз?")) {
-                clearTimeout(searchTimer);
-                searchTimer = null;
-                window.sendOrderToFirebase(); 
-            } else {
-                window.resetOrderUI();
+            if (currentOrderId) {
+                get(ref(db, 'orders/' + currentOrderId)).then((snap) => {
+                    const order = snap.val();
+                    if (order && order.status === 'searching') {
+                        document.getElementById('modal-timeout').style.display = 'flex';
+                    }
+                });
             }
         }, 60000);
     }
@@ -351,8 +377,7 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
     const drivers = driversSnap.val();
 
     if (!drivers || !window.clientCoords) {
-        alert("Нет свободных водителей.");
-        window.resetOrderUI();
+        document.getElementById('modal-timeout').style.display = 'flex';
         return;
     }
 
@@ -363,8 +388,7 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
         .sort((a,b) => a.dist - b.dist)[0];
 
     if (!nearest) {
-        alert("К сожалению, все ближайшие водители сейчас заняты.");
-        window.resetOrderUI();
+        document.getElementById('modal-timeout').style.display = 'flex';
         return;
     }
 
@@ -424,11 +448,13 @@ let activeInput=null;
 let customPrice=0;
 let destMarker;
 
+/* PHONE VALIDATION */
 const phone=document.getElementById('phone');
 phone.addEventListener('input',()=>{
     phone.value=phone.value.replace(/\D/g,'').slice(0,9);
 });
 
+/* START */
 document.getElementById('startBtn').onclick=()=>{
     if(!document.getElementById('name').value.trim()){
         alert("Введите имя");
@@ -482,6 +508,7 @@ async function reverse(c){
     return d.features?.[0]?.place_name||'';
 }
 
+/* SEARCH LOGIC */
 const fromInput=document.getElementById('from');
 const toInput=document.getElementById('to');
 fromInput.onfocus=()=>activeInput='from';
@@ -541,6 +568,7 @@ async function build(){
     map.fitBounds([from,to],{padding:80});
 }
 
+/* PRICE LOGIC */
 function clampPrice(v) {
     v = Number(v);
     if (isNaN(v)) v = minPrice;
@@ -580,13 +608,16 @@ document.getElementById('submitPrice').onclick = () => {
     document.getElementById('modal').style.display = 'none';
 };
 
+/* ORDER BUTTON CLICK */
 document.getElementById('orderBtn').onclick=()=>{
     window.sendOrderToFirebase();
 };
 
+/* 2D / 3D */
 document.getElementById('btn2d').onclick=()=>map.easeTo({pitch:0,bearing:0});
 document.getElementById('btn3d').onclick=()=>map.easeTo({pitch:60,bearing:-20});
 
+/* PROXY */
 setInterval(() => {
     window.map = map;
     window.clientCoords = from;
