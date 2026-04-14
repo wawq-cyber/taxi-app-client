@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Taxi Stable v19 - Fixed Layout & Price</title>
+<title>Taxi Stable v20 - Full State Recovery</title>
 
 <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
 <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet"/>
@@ -12,7 +12,7 @@
     body { margin:0; font-family:sans-serif; overflow: hidden; }
     #map { width:100%; height:100vh; }
 
-    /* START SCREEN - ИСПРАВЛЕНА ЦЕНТРОВКА */
+    /* START SCREEN */
     .start {
         position:fixed; inset:0; background:white;
         display:flex; justify-content:center; align-items:center; z-index:1000;
@@ -155,7 +155,7 @@
     let searchTimer = null;
     let isOrderActive = false;
 
-    // --- ИНИЦИАЛИЗАЦИЯ КАРТЫ ---
+    // --- КАРТА ---
     function initMap(center = [21.01, 52.23]) {
         map = new maplibregl.Map({
             container: 'map',
@@ -209,13 +209,54 @@
     document.getElementById('from').oninput = (e) => searchAddresses(e.target.value);
     document.getElementById('to').oninput = (e) => searchAddresses(e.target.value);
 
-    // --- ВВОД ТЕЛЕФОНА (ТОЛЬКО ЦИФРЫ) ---
+    // --- ТЕЛЕФОН ---
     const phoneInput = document.getElementById('phone');
     phoneInput.addEventListener('input', () => {
         phoneInput.value = phoneInput.value.replace(/\D/g, '').slice(0, 9);
     });
 
-    // --- ЛОГИКА ЦЕНЫ ---
+    // --- ВОССТАНОВЛЕНИЕ СЕССИИ (ИСПРАВЛЕНО) ---
+    async function checkSession() {
+        if (!currentOrderId) return;
+        const snap = await get(ref(db, `orders/${currentOrderId}`));
+        const order = snap.val();
+
+        if (order && (order.status === 'searching' || order.status === 'accepted')) {
+            isOrderActive = true;
+            document.getElementById('start').style.display = 'none';
+            
+            // Восстанавливаем данные полей
+            document.getElementById('name').value = order.clientName;
+            phoneInput.value = order.clientPhone.replace('+48', '');
+            document.getElementById('from').value = order.fromAddress;
+            document.getElementById('to').value = order.toAddress;
+
+            fromCoords = order.clientCoords;
+            toCoords = order.destCoords;
+            currentCustomPrice = order.price;
+
+            initMap(fromCoords);
+            
+            map.on('load', () => {
+                // Возвращаем маркер Куда
+                if (toCoords) {
+                    destMarker.setLngLat(toCoords).addTo(map);
+                }
+                
+                calculateRoute(false); // Рисуем маршрут без сброса цены
+                
+                document.getElementById('orderBtn').disabled = true;
+                document.getElementById('orderBtn').innerText = "В поиске...";
+
+                if (order.status === 'accepted') startTrackingDriver(order.assignedDriverId);
+                else startOrderSearch(true);
+            });
+        } else {
+            localStorage.removeItem('activeOrderId');
+        }
+    }
+
+    // --- ЦЕНА ---
     const pInput = document.getElementById('priceInput');
     const pSlider = document.getElementById('priceSlider');
 
@@ -224,30 +265,15 @@
         document.getElementById('modal-price').style.display = 'flex';
         document.getElementById('minPriceLabel').innerText = minPrice;
         pInput.value = currentCustomPrice;
-        pSlider.min = minPrice;
-        pSlider.max = minPrice * 5;
-        pSlider.value = currentCustomPrice;
+        pSlider.min = minPrice; pSlider.max = minPrice * 5; pSlider.value = currentCustomPrice;
     };
 
-    // Связка ползунка с полем ввода
-    pSlider.oninput = () => {
-        pInput.value = pSlider.value;
-        currentCustomPrice = parseInt(pSlider.value);
-    };
-
-    // Связка поля ввода с ползунком
-    pInput.oninput = () => {
-        pSlider.value = pInput.value;
-        currentCustomPrice = parseInt(pInput.value) || 0;
-    };
-
-    // Валидация при выходе из поля
+    pSlider.oninput = () => { pInput.value = pSlider.value; currentCustomPrice = parseInt(pSlider.value); };
+    pInput.oninput = () => { pSlider.value = pInput.value; currentCustomPrice = parseInt(pInput.value) || 0; };
     pInput.onblur = () => {
         let val = parseInt(pInput.value);
         if (isNaN(val) || val < minPrice) val = minPrice;
-        pInput.value = val;
-        pSlider.value = val;
-        currentCustomPrice = val;
+        pInput.value = val; pSlider.value = val; currentCustomPrice = val;
     };
 
     document.getElementById('submitPrice').onclick = () => {
@@ -269,16 +295,19 @@
         if (resetPrice) currentCustomPrice = minPrice;
 
         document.getElementById('panel').style.display = 'block';
-        document.getElementById('outName').innerText = document.getElementById('name').value;
         document.getElementById('km').innerText = (route.distance/1000).toFixed(1);
         document.getElementById('min').innerText = Math.round(route.duration/60);
         document.getElementById('price').innerText = currentCustomPrice;
+        document.getElementById('outName').innerText = document.getElementById('name').value;
 
         if (map.getSource('route')) map.getSource('route').setData(route.geometry);
         else {
             map.addSource('route', { type: 'geojson', data: route.geometry });
             map.addLayer({ id: 'route', type: 'line', source: 'route', paint: { 'line-color': '#f1c40f', 'line-width': 5 } });
         }
+        
+        // Гарантируем видимость маркера при расчете
+        destMarker.setLngLat(toCoords).addTo(map);
         map.fitBounds([fromCoords, toCoords], { padding: 80 });
     }
 
@@ -288,7 +317,7 @@
         return d.features?.[0]?.place_name || 'Адрес...';
     }
 
-    // --- ПОИСК И ВОССТАНОВЛЕНИЕ ---
+    // --- ПОИСК И СТАТУС ---
     async function startOrderSearch(isRecovery = false) {
         isOrderActive = true;
         const btn = document.getElementById('orderBtn');
@@ -348,28 +377,6 @@
         });
     }
 
-    async function checkSession() {
-        if (!currentOrderId) return;
-        const snap = await get(ref(db, `orders/${currentOrderId}`));
-        const order = snap.val();
-        if (order && (order.status === 'searching' || order.status === 'accepted')) {
-            isOrderActive = true;
-            document.getElementById('start').style.display = 'none';
-            document.getElementById('name').value = order.clientName;
-            phoneInput.value = order.clientPhone.replace('+48', '');
-            fromCoords = order.clientCoords;
-            toCoords = order.destCoords;
-            currentCustomPrice = order.price;
-            initMap(fromCoords);
-            map.on('load', () => {
-                calculateRoute(false);
-                document.getElementById('orderBtn').disabled = true;
-                if (order.status === 'accepted') startTrackingDriver(order.assignedDriverId);
-                else startOrderSearch(true);
-            });
-        }
-    }
-
     async function resetSystem() {
         if (currentOrderId) await remove(ref(db, `orders/${currentOrderId}`));
         localStorage.removeItem('activeOrderId');
@@ -401,7 +408,6 @@
         });
     };
 
-    document.getElementById('orderBtn').onclick = () => startOrderSearch();
     document.getElementById('timeout-cancel').onclick = resetSystem;
     document.getElementById('timeout-continue').onclick = () => {
         document.getElementById('modal-timeout').style.display = 'none';
