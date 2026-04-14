@@ -1,272 +1,293 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Taxi v26 FINAL RECOVERY</title>
-<script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
-<link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet"/>
-<style>
-    body { margin:0; font-family:sans-serif; overflow: hidden; touch-action: manipulation; }
-    #map { width:100%; height:100vh; }
-    .start { position:fixed; inset:0; background:white; display:flex; justify-content:center; align-items:center; z-index:2000; }
-    .box { width:300px; }
-    .input { width:100%; padding:12px; margin-bottom:10px; border-radius:10px; border:1px solid #ddd; box-sizing: border-box; }
-    .btn { width:100%; padding:12px; border:none; border-radius:10px; background:#f1c40f; font-weight:bold; cursor:pointer; }
-    .error { color:red; font-size:12px; display:none; margin-top:-5px; margin-bottom:8px; }
-    .top { position:absolute; top:15px; left:10px; width:320px; z-index:10; transition: opacity 0.3s; }
-    .box2 { background:white; padding:10px; border-radius:15px; box-shadow:0 4px 15px rgba(0,0,0,0.1); }
-    .input2 { width:100%; padding:10px; border-radius:10px; border:1px solid #eee; margin-bottom:6px; box-sizing: border-box; }
-    .panel { position:absolute; bottom:20px; left:10px; width:320px; background:white; padding:12px; border-radius:15px; display:none; z-index:20; box-shadow:0 4px 15px rgba(0,0,0,0.1); }
-    .row { display:flex; gap:10px; margin-top:10px; }
-    .btn2 { flex:1; padding:12px; border:none; border-radius:10px; font-weight:bold; cursor:pointer; }
-    .order { background:#f1c40f; }
-    .price-btn { background:#e74c3c; color:white; }
-    .map-controls { position:absolute; right:10px; top:100px; z-index:100; display:flex; flex-direction:column; gap:8px; }
-    .map-controls button { width:40px; height:40px; background:white; border:none; border-radius:8px; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,0.2); font-weight:bold; font-size:18px; }
-    .modal { position:fixed; inset:0; background:rgba(0,0,0,0.5); display:none; justify-content:center; align-items:center; z-index:9999; }
-    .modal-content { background:white; padding:20px; border-radius:15px; width:300px; }
-    #driver-status { display:none; position:absolute; top:100px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.85); color:white; padding:15px 25px; border-radius:20px; z-index:1000; text-align:center; box-shadow:0 4px 15px rgba(0,0,0,0.3); width: 80%; max-width: 320px; }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Taxi App v27 (Base v15)</title>
+    <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet"/>
+    <style>
+        body { margin: 0; font-family: -apple-system, sans-serif; overflow: hidden; }
+        #map { width: 100%; height: 100vh; }
+        .start-screen { position: fixed; inset: 0; background: white; z-index: 2000; display: flex; justify-content: center; align-items: center; }
+        .box { width: 320px; padding: 20px; }
+        .input { width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 12px; box-sizing: border-box; font-size: 16px; }
+        .btn { width: 100%; padding: 15px; border: none; border-radius: 12px; background: #f1c40f; font-weight: bold; cursor: pointer; font-size: 16px; }
+        .error { color: red; font-size: 12px; display: none; margin-bottom: 10px; }
+        .top-ui { position: absolute; top: 15px; left: 10px; width: calc(100% - 20px); max-width: 350px; z-index: 10; }
+        .search-box { background: white; padding: 12px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); }
+        .panel { position: absolute; bottom: 25px; left: 10px; width: calc(100% - 20px); max-width: 350px; background: white; padding: 15px; border-radius: 20px; display: none; z-index: 20; box-shadow: 0 4px 25px rgba(0,0,0,0.2); }
+        .price-row { display: flex; gap: 10px; margin-top: 10px; }
+        .btn-price { flex: 1; background: #e74c3c; color: white; padding: 12px; border: none; border-radius: 12px; font-weight: bold; }
+        .btn-order { flex: 1; background: #f1c40f; padding: 12px; border: none; border-radius: 12px; font-weight: bold; }
+        .map-ctrl { position: absolute; right: 10px; top: 100px; display: flex; flex-direction: column; gap: 10px; z-index: 10; }
+        .map-ctrl button { width: 45px; height: 45px; background: white; border: none; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); font-weight: bold; font-size: 18px; }
+        .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none; justify-content: center; align-items: center; z-index: 3000; }
+        .modal-content { background: white; padding: 25px; border-radius: 20px; width: 300px; text-align: center; }
+        #status-overlay { display: none; position: absolute; top: 120px; left: 50%; transform: translateX(-50%); background: white; padding: 15px 25px; border-radius: 50px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); z-index: 1000; text-align: center; width: 80%; }
+    </style>
 </head>
 <body>
 
-<div id="driver-status"></div>
+<div id="status-overlay"></div>
 
-<div class="start" id="start">
+<div class="start-screen" id="start-screen">
     <div class="box">
-        <h3>Ваши данные</h3>
-        <input id="name" class="input" placeholder="Имя">
-        <div style="display:flex; gap:6px; align-items:center; margin-bottom:10px;">
-            <span style="font-weight:bold;">+48</span>
-            <input id="phone" class="input" style="margin-bottom:0;" 
-                   placeholder="9 цифр" 
-                   type="tel" 
-                   inputmode="numeric" 
-                   pattern="[0-9]*" 
-                   oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 9);">
+        <h2 style="margin-top:0">Такси</h2>
+        <input id="user-name" class="input" placeholder="Ваше имя">
+        <div style="display:flex; gap:8px; align-items:center;">
+            <span style="font-weight:bold">+48</span>
+            <input id="user-phone" class="input" style="margin-bottom:0" placeholder="9 цифр" type="tel" inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'').slice(0,9)">
         </div>
-        <div class="error" id="phoneError">Введите корректный номер (9 цифр)</div>
-        <button class="btn" id="startBtn">Продолжить</button>
+        <p class="error" id="login-error">Проверьте имя и номер (9 цифр)</p>
+        <button class="btn" onclick="login()">Войти</button>
     </div>
 </div>
 
 <div id="map"></div>
 
-<div class="top" id="top-search">
-    <div class="box2">
-        <span onclick="localStorage.clear(); sessionStorage.clear(); location.reload();" style="font-size:11px; color:#999; text-decoration:underline; cursor:pointer; float:right;">Выйти</span>
-        <div style="clear:both;"></div>
-        <input id="from" class="input2" placeholder="Откуда (определение...)" readonly>
-        <input id="to" class="input2" placeholder="Куда (нажмите на карту)">
+<div class="top-ui">
+    <div class="search-box">
+        <input id="addr-from" class="input" style="background:#f9f9f9" readonly placeholder="Откуда (определение...)">
+        <input id="addr-to" class="input" style="margin-bottom:0" placeholder="Куда (нажмите на карту)">
     </div>
 </div>
 
-<div class="map-controls">
+<div class="map-ctrl">
     <button onclick="map.zoomIn()">+</button>
-    <button onclick="map.zoomOut()">−</button>
+    <button onclick="map.zoomOut()">-</button>
     <button onclick="map.easeTo({pitch:0})">2D</button>
     <button onclick="map.easeTo({pitch:60})">3D</button>
 </div>
 
-<div class="panel" id="panel">
-    <div>Заказчик: <b id="outName"></b></div>
-    <div>До цели: <b id="km"></b> км</div>
-    <div style="font-size: 20px; margin-top: 5px;">Цена: <b id="price"></b> zł</div>
-    <div class="row">
-        <button class="btn2 price-btn" id="custom">Своя цена</button>
-        <button class="btn2 order" id="orderBtn">Заказать</button>
+<div class="panel" id="order-panel">
+    <div style="margin-bottom:8px">Расстояние: <b id="dist-val">0</b> км</div>
+    <div style="font-size:24px; font-weight:bold; margin-bottom:12px;">Цена: <span id="price-val">0</span> zł</div>
+    <div class="price-row">
+        <button class="btn-price" onclick="openPriceModal()">Своя цена</button>
+        <button class="btn-order" onclick="processOrder()">Заказать</button>
     </div>
 </div>
 
-<div class="modal" id="modal-price">
+<div class="modal" id="price-modal">
     <div class="modal-content">
         <h3>Ваша цена</h3>
-        <input id="priceInput" class="input" type="number">
-        <input id="priceSlider" style="width:100%" type="range">
-        <button id="submitPrice" class="btn2 order" style="margin-top:10px">Установить</button>
+        <p>Мин: <b id="min-p"></b> zł</p>
+        <input id="custom-price-input" class="input" type="number">
+        <input id="price-slider" type="range" style="width:100%; margin:15px 0">
+        <button class="btn" onclick="applyCustomPrice()">Применить</button>
     </div>
 </div>
 
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-  import { getDatabase, ref, push, set, onValue, get } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getDatabase, ref, push, set, onValue, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-  const firebaseConfig = {
-    apiKey: "AIzaSyAf-9-A72oCswBCQIilwuE6FEYt_MN2PbU",
-    authDomain: "taxi-app-41298.firebaseapp.com",
-    databaseURL: "https://taxi-app-41298-default-rtdb.europe-west1.firebasedatabase.app",
-    projectId: "taxi-app-41298",
-    storageBucket: "taxi-app-41298.firebasestorage.app",
-    messagingSenderId: "1011260164934",
-    appId: "1:1011260164934:web:1972a0315325b3f5d3b347"
-  };
+    const firebaseConfig = {
+        apiKey: "AIzaSyAf-9-A72oCswBCQIilwuE6FEYt_MN2PbU",
+        authDomain: "taxi-app-41298.firebaseapp.com",
+        databaseURL: "https://taxi-app-41298-default-rtdb.europe-west1.firebasedatabase.app",
+        projectId: "taxi-app-41298",
+        storageBucket: "taxi-app-41298.firebasestorage.app",
+        messagingSenderId: "1011260164934",
+        appId: "1:1011260164934:web:1972a0315325b3f5d3b347"
+    };
 
-  const app = initializeApp(firebaseConfig);
-  const db = getDatabase(app);
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
 
-  window.saveOrder = async () => {
-      const orderId = localStorage.getItem('activeOrderId');
-      const data = {
-          clientName: sessionStorage.getItem('userName'),
-          clientPhone: "+48" + sessionStorage.getItem('userPhone'),
-          fromAddress: document.getElementById('from').value,
-          toAddress: document.getElementById('to').value,
-          clientCoords: window.clientCoords,
-          destCoords: window.destCoords,
-          price: document.getElementById('price').innerText,
-          status: "searching",
-          createdAt: Date.now()
-      };
-      
-      const newRef = orderId ? ref(db, 'orders/' + orderId) : push(ref(db, 'orders'));
-      if(!orderId) localStorage.setItem('activeOrderId', newRef.key);
-      
-      await set(newRef, data);
-      window.startOrderTracking(localStorage.getItem('activeOrderId'));
-  };
+    let map, markerFrom, markerTo, routeData, currentOrderId, timer60;
+    let minPriceGlobal = 0;
 
-  window.startOrderTracking = (id) => {
-      window.isOrderPending = true;
-      document.getElementById('panel').style.display = 'none';
-      document.getElementById('top-search').style.opacity = '0.5';
-      document.getElementById('driver-status').style.display = 'block';
-      document.getElementById('driver-status').innerHTML = "Поиск водителя...<br><button onclick='localStorage.removeItem(\"activeOrderId\");location.reload()' style='color:red;background:none;border:none;text-decoration:underline;cursor:pointer;'>Отменить</button>";
-
-      onValue(ref(db, 'orders/' + id), (snap) => {
-          const order = snap.val();
-          if (order?.status === 'accepted') {
-              document.getElementById('driver-status').innerHTML = "<b>Водитель найден!</b><br>Машина выехала.";
-          }
-      });
-      
-      setTimeout(async () => {
-          const s = await get(ref(db, 'orders/' + id));
-          if(s.val()?.status === 'searching') {
-              alert("Водители не найдены. Попробуйте увеличить цену.");
-              localStorage.removeItem('activeOrderId');
-              location.reload();
-          }
-      }, 60000);
-  };
-</script>
-
-<script>
-let map, from, to, minPrice, destMarker;
-window.map = null;
-
-async function reverse(c){
-    try {
-        const r=await fetch(`https://api.maptiler.com/geocoding/${c[0]},${c[1]}.json?key=umzJGOnUyr8Edm12MN9b`);
-        const d=await r.json(); return d.features?.[0]?.place_name||'Неизвестно';
-    } catch(e) { return 'Ошибка адреса'; }
-}
-
-function initApp() {
-    document.getElementById('start').style.display = 'none';
-    map = new maplibregl.Map({
-        container: 'map',
-        style: 'https://api.maptiler.com/maps/streets-v4/style.json?key=umzJGOnUyr8Edm12MN9b',
-        center: [21.01, 52.23], zoom: 12
-    });
-    window.map = map;
-    destMarker = new maplibregl.Marker({color:'red', draggable:true});
-
-    map.on('load', async () => {
-        const savedFrom = localStorage.getItem('lastFrom');
-        const savedTo = localStorage.getItem('lastTo');
-
-        if (savedFrom && savedTo) {
-            from = JSON.parse(savedFrom); to = JSON.parse(savedTo);
-            window.clientCoords = from; window.destCoords = to;
-            new maplibregl.Marker({color:'blue'}).setLngLat(from).addTo(map);
-            document.getElementById('from').value = await reverse(from);
-            document.getElementById('to').value = await reverse(to);
-            build();
-        } else {
-            navigator.geolocation.getCurrentPosition(async p => {
-                from = [p.coords.longitude, p.coords.latitude];
-                window.clientCoords = from;
-                new maplibregl.Marker({color:'blue'}).setLngLat(from).addTo(map);
-                map.flyTo({center: from, zoom: 15});
-                document.getElementById('from').value = await reverse(from);
-            });
+    window.login = () => {
+        const name = document.getElementById('user-name').value;
+        const phone = document.getElementById('user-phone').value;
+        if (name.length < 2 || phone.length !== 9) {
+            document.getElementById('login-error').style.display = 'block';
+            return;
         }
+        sessionStorage.setItem('uName', name);
+        sessionStorage.setItem('uPhone', phone);
+        document.getElementById('start-screen').style.display = 'none';
+        initMap();
+    };
 
-        const activeId = localStorage.getItem('activeOrderId');
-        if(activeId && window.startOrderTracking) window.startOrderTracking(activeId);
-    });
+    function initMap() {
+        map = new maplibregl.Map({
+            container: 'map',
+            style: 'https://api.maptiler.com/maps/streets-v4/style.json?key=umzJGOnUyr8Edm12MN9b',
+            center: [21.01, 52.23], zoom: 12
+        });
 
-    map.on('click', async e => {
-        if(window.isOrderPending) return;
-        to = [e.lngLat.lng, e.lngLat.lat];
-        window.destCoords = to;
-        localStorage.setItem('lastTo', JSON.stringify(to));
-        localStorage.setItem('lastFrom', JSON.stringify(from));
-        document.getElementById('to').value = await reverse(to);
-        build();
-    });
+        markerFrom = new maplibregl.Marker({color:'blue'}).setLngLat([0,0]).addTo(map);
+        markerTo = new maplibregl.Marker({color:'red', draggable:true}).setLngLat([0,0]);
 
-    destMarker.on('dragend', async () => {
-        if(window.isOrderPending) return;
-        to = [destMarker.getLngLat().lng, destMarker.getLngLat().lat];
-        window.destCoords = to;
-        localStorage.setItem('lastTo', JSON.stringify(to));
-        document.getElementById('to').value = await reverse(to);
-        build();
-    });
-}
+        map.on('load', () => {
+            // Восстановление после F5
+            const savedData = localStorage.getItem('taxi_state');
+            if (savedData) {
+                const state = JSON.parse(savedData);
+                restoreState(state);
+            } else {
+                navigator.geolocation.getCurrentPosition(pos => {
+                    const coords = [pos.coords.longitude, pos.coords.latitude];
+                    markerFrom.setLngLat(coords);
+                    map.flyTo({center: coords, zoom: 14});
+                    updateAddr(coords, 'addr-from');
+                });
+            }
+        });
 
-async function build() {
-    if (!from || !to) return;
-    const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${from[0]},${from[1]};${to[0]},${to[1]}?overview=full&geometries=geojson`);
-    const d = await r.json();
-    const route = d.routes[0];
-    const km = (route.distance/1000).toFixed(1);
-    minPrice = Math.round(km * 2.5 + 10);
+        map.on('click', e => {
+            if (window.orderActive) return;
+            setDestination([e.lngLat.lng, e.lngLat.lat]);
+        });
 
-    document.getElementById('panel').style.display = 'block';
-    document.getElementById('outName').innerText = sessionStorage.getItem('userName');
-    document.getElementById('km').innerText = km;
-    document.getElementById('price').innerText = minPrice;
-
-    if (map.getSource('route')) map.getSource('route').setData(route.geometry);
-    else {
-        map.addSource('route', {type:'geojson', data:route.geometry});
-        map.addLayer({id:'route', type:'line', source:'route', paint:{'line-color':'#f1c40f', 'line-width':5}});
+        markerTo.on('dragend', () => {
+            setDestination([markerTo.getLngLat().lng, markerTo.getLngLat().lat]);
+        });
     }
-    destMarker.setLngLat(to).addTo(map);
-    map.fitBounds([from, to], {padding: 70});
-}
 
-document.getElementById('custom').onclick = () => {
-    document.getElementById('modal-price').style.display = 'flex';
-    document.getElementById('priceInput').value = minPrice;
-    document.getElementById('priceSlider').min = minPrice;
-    document.getElementById('priceSlider').max = minPrice * 5;
-    document.getElementById('priceSlider').value = minPrice;
-};
-document.getElementById('priceSlider').oninput = (e) => { document.getElementById('priceInput').value = e.target.value; };
-document.getElementById('submitPrice').onclick = () => {
-    let v = parseInt(document.getElementById('priceInput').value);
-    document.getElementById('price').innerText = (isNaN(v) || v < minPrice) ? minPrice : v;
-    document.getElementById('modal-price').style.display = 'none';
-};
+    async function setDestination(coords) {
+        markerTo.setLngLat(coords).addTo(map);
+        updateAddr(coords, 'addr-to');
+        buildRoute(markerFrom.getLngLat().toArray(), coords);
+    }
 
-document.getElementById('startBtn').onclick = () => {
-    const n = document.getElementById('name').value;
-    const p = document.getElementById('phone').value;
-    if (n.length < 2 || p.length !== 9) { document.getElementById('phoneError').style.display = 'block'; return; }
-    sessionStorage.setItem('userName', n);
-    sessionStorage.setItem('userPhone', p);
-    initApp();
-};
+    async function buildRoute(start, end, savedPrice = null) {
+        const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${start[0]},${start[1]};${end[0]},${end[1]}?overview=full&geometries=geojson`);
+        const data = await res.json();
+        routeData = data.routes[0];
 
-if (sessionStorage.getItem('userName')) initApp();
-document.getElementById('orderBtn').onclick = () => {
-    map.easeTo({pitch: 60});
-    window.saveOrder();
-};
+        const km = (routeData.distance / 1000).toFixed(1);
+        minPriceGlobal = Math.round(km * 2.5 + 10);
+        
+        document.getElementById('dist-val').innerText = km;
+        const finalPrice = savedPrice || minPriceGlobal;
+        document.getElementById('price-val').innerText = finalPrice;
+        
+        if (map.getSource('route')) map.getSource('route').setData(routeData.geometry);
+        else {
+            map.addSource('route', {type:'geojson', data:routeData.geometry});
+            map.addLayer({id:'route', type:'line', source:'route', paint:{'line-color':'#f1c40f', 'line-width':6}});
+        }
+        
+        document.getElementById('order-panel').style.display = 'block';
+        map.fitBounds([start, end], {padding: 60});
+
+        // Сохраняем состояние
+        localStorage.setItem('taxi_state', JSON.stringify({
+            from: start, to: end, price: finalPrice
+        }));
+    }
+
+    window.openPriceModal = () => {
+        const modal = document.getElementById('price-modal');
+        modal.style.display = 'flex';
+        document.getElementById('min-p').innerText = minPriceGlobal;
+        const input = document.getElementById('custom-price-input');
+        const slider = document.getElementById('price-slider');
+        input.value = document.getElementById('price-val').innerText;
+        slider.min = minPriceGlobal;
+        slider.max = minPriceGlobal * 5;
+        slider.value = input.value;
+        
+        slider.oninput = () => input.value = slider.value;
+    };
+
+    window.applyCustomPrice = () => {
+        let val = parseInt(document.getElementById('custom-price-input').value);
+        if (isNaN(val) || val < minPriceGlobal) val = minPriceGlobal;
+        document.getElementById('price-val').innerText = val;
+        document.getElementById('price-modal').style.display = 'none';
+        
+        const state = JSON.parse(localStorage.getItem('taxi_state'));
+        state.price = val;
+        localStorage.setItem('taxi_state', JSON.stringify(state));
+    };
+
+    window.processOrder = async () => {
+        window.orderActive = true;
+        const price = document.getElementById('price-val').innerText;
+        
+        // Эффект 3D и масштаб при заказе
+        map.easeTo({pitch: 60, duration: 1000});
+        map.fitBounds([markerFrom.getLngLat().toArray(), markerTo.getLngLat().toArray()], {padding: 100});
+
+        const order = {
+            name: sessionStorage.getItem('uName'),
+            phone: "+48" + sessionStorage.getItem('uPhone'),
+            from: document.getElementById('addr-from').value,
+            to: document.getElementById('addr-to').value,
+            price: price,
+            coords: markerFrom.getLngLat().toArray(),
+            status: 'searching'
+        };
+
+        const newOrderRef = push(ref(db, 'orders'));
+        currentOrderId = newOrderRef.key;
+        localStorage.setItem('active_order_id', currentOrderId);
+        await set(newOrderRef, order);
+
+        showStatus(`Поиск водителя... <br><small>Стоимость поездки: ${price} zł</small>`);
+        document.getElementById('order-panel').style.display = 'none';
+
+        // Таймер 60 секунд
+        timer60 = setTimeout(() => {
+            if (confirm("Водитель не найден. Продолжить поиск?")) {
+                // Если продолжить - просто перезапускаем такой же таймер
+                processOrder(); 
+            } else {
+                cancelOrder();
+            }
+        }, 60000);
+
+        onValue(ref(db, `orders/${currentOrderId}`), snap => {
+            if (snap.val()?.status === 'accepted') {
+                clearTimeout(timer60);
+                showStatus("Водитель принял заказ! Машина едет.");
+            }
+        });
+    };
+
+    async function cancelOrder() {
+        if (currentOrderId) await remove(ref(db, `orders/${currentOrderId}`));
+        localStorage.removeItem('active_order_id');
+        location.reload();
+    }
+
+    function showStatus(html) {
+        const el = document.getElementById('status-overlay');
+        el.innerHTML = html;
+        el.style.display = 'block';
+    }
+
+    async function updateAddr(c, id) {
+        const r = await fetch(`https://api.maptiler.com/geocoding/${c[0]},${c[1]}.json?key=umzJGOnUyr8Edm12MN9b`);
+        const d = await r.json();
+        document.getElementById(id).value = d.features[0]?.place_name || 'Координаты: ' + c;
+    }
+
+    function restoreState(s) {
+        markerFrom.setLngLat(s.from);
+        markerTo.setLngLat(s.to).addTo(map);
+        updateAddr(s.from, 'addr-from');
+        updateAddr(s.to, 'addr-to');
+        buildRoute(s.from, s.to, s.price);
+        
+        const activeId = localStorage.getItem('active_order_id');
+        if (activeId) {
+            currentOrderId = activeId;
+            window.orderActive = true;
+            showStatus(`Поиск водителя... <br><small>Стоимость поездки: ${s.price} zł</small>`);
+            document.getElementById('order-panel').style.display = 'none';
+        }
+    }
+
+    if (sessionStorage.getItem('uName')) {
+        document.getElementById('start-screen').style.display = 'none';
+        initMap();
+    }
 </script>
 </body>
 </html>
