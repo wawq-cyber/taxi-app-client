@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Taxi v15 ENGINE</title>
+<title>Taxi v15 FIXED FULL</title>
 
 <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
 <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet"/>
@@ -12,48 +12,38 @@
 body{margin:0;font-family:sans-serif;}
 #map{width:100%;height:100vh;}
 
-.start{
-position:fixed;inset:0;background:#fff;
-display:flex;align-items:center;justify-content:center;z-index:9999;
-}
-
+.start{position:fixed;inset:0;background:#fff;display:flex;justify-content:center;align-items:center;z-index:9999;}
 .box{width:300px;}
-
 .input{width:100%;padding:10px;margin:5px 0;border:1px solid #ddd;border-radius:8px;}
-
 .btn{width:100%;padding:12px;background:#f1c40f;border:none;font-weight:bold;border-radius:10px;}
 
 .top{position:absolute;top:10px;left:10px;width:300px;z-index:10;}
+.panel{position:absolute;bottom:20px;left:10px;background:#fff;padding:12px;border-radius:12px;width:300px;z-index:10;}
 
 .suggest{background:#fff;max-height:180px;overflow:auto;}
 .item{padding:8px;cursor:pointer;}
 .item:hover{background:#eee;}
 
-.panel{
-position:absolute;bottom:20px;left:10px;
-background:#fff;padding:12px;border-radius:12px;width:300px;z-index:10;
-}
-
-.modal{
-position:fixed;inset:0;background:rgba(0,0,0,.5);
-display:none;align-items:center;justify-content:center;z-index:9999;
-}
-
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:9999;}
 .modal-box{background:#fff;padding:20px;width:300px;}
 
 .map-small{height:80vh !important;}
 
-.loader{width:16px;height:16px;border:3px solid #eee;border-top:3px solid #f1c40f;border-radius:50%;animation:spin 1s linear infinite;}
-@keyframes spin{to{transform:rotate(360deg)}}
+.status{
+position:absolute;top:80px;left:50%;transform:translateX(-50%);
+background:rgba(0,0,0,.8);color:#fff;padding:10px 15px;border-radius:10px;z-index:9999;
+}
 </style>
 </head>
 
 <body>
 
+<div id="driver-status" class="status" style="display:none"></div>
+
 <div class="start" id="start">
   <div class="box">
     <input id="name" class="input" placeholder="Имя">
-    <input id="phone" class="input" placeholder="Телефон 9 цифр">
+    <input id="phone" class="input" placeholder="Телефон (9 цифр)">
     <button class="btn" id="startBtn">Начать</button>
   </div>
 </div>
@@ -67,7 +57,7 @@ display:none;align-items:center;justify-content:center;z-index:9999;
 </div>
 
 <div class="panel">
-<div>Цена: <b id="price">0</b></div>
+<div>Цена: <b id="price">0</b> zł</div>
 <button class="btn" id="order">Заказать</button>
 </div>
 
@@ -79,23 +69,38 @@ display:none;align-items:center;justify-content:center;z-index:9999;
 </div>
 </div>
 
+<div class="modal" id="timeoutModal">
+<div class="modal-box" style="text-align:center">
+<h3>Водитель не найден</h3>
+<p>Продолжить поиск?</p>
+<button class="btn" id="continue">Продолжить</button>
+<button class="btn" id="cancel">Отменить</button>
+</div>
+</div>
+
 <script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { getDatabase, ref, set, push, get, onValue, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-/* ================= FIREBASE (optional safe) ================= */
-let db=null;
+const app = initializeApp({
+  apiKey:"AIza...",
+  databaseURL:"https://taxi-app.firebaseio.com"
+});
+const db = getDatabase(app);
 
-/* ================= STATE ENGINE ================= */
+/* ================= STATE ================= */
 const S = {
   map:null,
   from:null,
   to:null,
   price:0,
   minPrice:0,
-  active:false,
-  orderId:null
+  orderId:null,
+  timer:null,
+  active:false
 };
 
-/* ================= BOOT ================= */
+/* ================= INIT ================= */
 window.addEventListener('DOMContentLoaded', init);
 
 function init(){
@@ -117,38 +122,44 @@ function initMap(){
 /* ================= UI ================= */
 function bindUI(){
 
-/* PHONE FIX */
 const phone=document.getElementById('phone');
-if(phone){
 phone.addEventListener('input',e=>{
   e.target.value = e.target.value.replace(/\D/g,'').slice(0,9);
 });
-}
 
-/* SEARCH */
-document.getElementById('from').oninput=(e)=>search(e.target.value,'from');
-document.getElementById('to').oninput=(e)=>search(e.target.value,'to');
+document.getElementById('startBtn').onclick=()=>{
+  document.getElementById('start').style.display='none';
+};
 
-/* ORDER */
-document.getElementById('order').onclick=order;
+document.getElementById('from').oninput=e=>search(e.target.value,'from');
+document.getElementById('to').oninput=e=>search(e.target.value,'to');
 
-/* PRICE */
+document.getElementById('order').onclick=sendOrder;
+
 document.getElementById('ok').onclick=()=>{
-  S.price = clamp(S.price);
+  S.price = Math.max(S.price,S.minPrice);
   document.getElementById('modal').style.display='none';
 };
 
-document.getElementById('priceSlider').oninput=(e)=>{
-  S.price = Math.min(Number(e.target.value), S.minPrice*5);
+document.getElementById('priceSlider').oninput=e=>{
+  S.price = Math.min(Number(e.target.value),S.minPrice*5);
   document.getElementById('priceInput').value=S.price;
+};
+
+document.getElementById('continue').onclick=()=>{
+  document.getElementById('timeoutModal').style.display='none';
+  sendOrder();
+};
+
+document.getElementById('cancel').onclick=()=>{
+  if(S.orderId) remove(ref(db,'orders/'+S.orderId));
+  reset();
+  document.getElementById('timeoutModal').style.display='none';
 };
 }
 
 /* ================= SEARCH ================= */
-let active=null;
-
 async function search(q,field){
-active=field;
 if(q.length<3)return;
 
 const r=await fetch(`https://api.maptiler.com/geocoding/${encodeURIComponent(q)}.json?key=demo`);
@@ -179,8 +190,7 @@ if(!S.from||!S.to)return;
 const r=await fetch(`https://router.project-osrm.org/route/v1/driving/${S.from[0]},${S.from[1]};${S.to[0]},${S.to[1]}?overview=full&geometries=geojson`);
 const d=await r.json();
 
-const route=d.routes[0];
-const km=route.distance/1000;
+const km=d.routes[0].distance/1000;
 
 S.minPrice=Math.round(km*2.5+10);
 S.price=S.minPrice;
@@ -189,45 +199,45 @@ document.getElementById('price').innerText=S.price;
 }
 
 /* ================= ORDER ================= */
-function order(){
+async function sendOrder(){
 
 S.active=true;
 
 document.getElementById('map').classList.add('map-small');
-
-localStorage.setItem('price',S.price);
-localStorage.setItem('from',JSON.stringify(S.from));
-localStorage.setItem('to',JSON.stringify(S.to));
-
 startTimer();
+
+S.orderId = S.orderId || push(ref(db,'orders')).key;
+
+await set(ref(db,'orders/'+S.orderId),{
+  from:S.from,
+  to:S.to,
+  price:S.price,
+  status:"searching",
+  createdAt:Date.now()
+});
 }
 
 /* ================= TIMER ================= */
-let t;
 function startTimer(){
-clearTimeout(t);
-t=setTimeout(()=>{
-alert("Водитель не найден");
+clearTimeout(S.timer);
+S.timer=setTimeout(()=>{
+document.getElementById('timeoutModal').style.display='flex';
 },60000);
 }
 
 /* ================= RESTORE ================= */
-function restore(){
+async function restore(){
 const p=localStorage.getItem('price');
-const f=localStorage.getItem('from');
-const to=localStorage.getItem('to');
-
 if(p)S.price=Number(p);
-if(f)S.from=JSON.parse(f);
-if(to)S.to=JSON.parse(to);
 }
 
-/* ================= PRICE ================= */
-function clamp(v){
-v=Number(v);
-return v<S.minPrice?S.minPrice:v;
+/* ================= RESET ================= */
+function reset(){
+S.active=false;
+S.orderId=null;
+S.from=null;
+S.to=null;
 }
-
 </script>
 
 </body>
