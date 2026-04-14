@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Taxi Stable v21 - Final Fix</title>
+<title>Taxi App v22 - Geo-Filtering</title>
 
 <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
 <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet"/>
@@ -114,18 +114,6 @@
     </div>
 </div>
 
-<div class="modal" id="modal-timeout">
-    <div class="modal-content">
-        <div style="font-size: 40px; margin-bottom: 10px;">⏳</div>
-        <h3>Машина не найдена</h3>
-        <p>Продолжить поиск или отменить?</p>
-        <div class="row">
-            <button class="btn2" id="timeout-cancel" style="background:#eee;">Отменить</button>
-            <button class="btn2 order" id="timeout-continue">Продолжить</button>
-        </div>
-    </div>
-</div>
-
 <div class="ctrl">
     <button id="btn2d">2D</button>
     <button id="btn3d">3D</button>
@@ -152,10 +140,53 @@
     let fromCoords = null, toCoords = null;
     let minPrice = 0, currentCustomPrice = 0;
     let currentOrderId = localStorage.getItem('activeOrderId');
-    let searchTimer = null;
     let isOrderActive = false;
+    let driverMarkers = {}; // Память для иконок такси
 
-    // --- КАРТА ---
+    // --- ФУНКЦИЯ РАССТОЯНИЯ (КМ) ---
+    function getDistance(c1, c2) {
+        if (!c1 || !c2) return 999;
+        const R = 6371;
+        const dLat = (c2[1] - c1[1]) * Math.PI / 180;
+        const dLon = (c2[0] - c1[0]) * Math.PI / 180;
+        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                  Math.cos(c1[1] * Math.PI / 180) * Math.cos(c2[1] * Math.PI / 180) *
+                  Math.sin(dLon/2) * Math.sin(dLon/2);
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    // --- ВИЗУАЛИЗАЦИЯ СВОБОДНЫХ ВОДИТЕЛЕЙ ---
+    function trackNearbyDrivers() {
+        const driversRef = ref(db, 'drivers');
+        onValue(driversRef, (snap) => {
+            const data = snap.val();
+            if (!data || !fromCoords) return;
+
+            for (let id in data) {
+                const driver = data[id];
+                const dist = getDistance(fromCoords, driver.coords);
+
+                // ФИЛЬТР: Статус "online" И расстояние < 15 км
+                if (driver.status === 'online' && dist < 15) {
+                    if (driverMarkers[id]) {
+                        driverMarkers[id].setLngLat(driver.coords);
+                    } else {
+                        const el = document.createElement('div');
+                        el.innerHTML = '🚕'; el.style.fontSize = '24px';
+                        driverMarkers[id] = new maplibregl.Marker(el).setLngLat(driver.coords).addTo(map);
+                    }
+                } else {
+                    // Удаляем, если уехал далеко или ушел в оффлайн
+                    if (driverMarkers[id]) {
+                        driverMarkers[id].remove();
+                        delete driverMarkers[id];
+                    }
+                }
+            }
+        });
+    }
+
+    // --- ИНИЦИАЛИЗАЦИЯ КАРТЫ ---
     function initMap(center = [21.01, 52.23]) {
         map = new maplibregl.Map({
             container: 'map',
@@ -166,6 +197,10 @@
         map.addControl(new maplibregl.NavigationControl(), 'top-right');
         userMarker = new maplibregl.Marker({color:'blue'}).setLngLat(center).addTo(map);
         destMarker = new maplibregl.Marker({color:'red', draggable:true});
+
+        map.on('load', () => {
+            trackNearbyDrivers(); // Запускаем отображение такси при загрузке
+        });
 
         map.on('click', async (e) => {
             if (isOrderActive) return;
@@ -183,7 +218,7 @@
         });
     }
 
-    // --- ПОИСК ---
+    // --- ПОИСК АДРЕСОВ ---
     async function searchAddresses(q) {
         if(q.length < 3 || isOrderActive) return;
         const r = await fetch(`https://api.maptiler.com/geocoding/${encodeURIComponent(q)}.json?key=umzJGOnUyr8Edm12MN9b&limit=5`);
@@ -209,39 +244,11 @@
     document.getElementById('from').oninput = (e) => searchAddresses(e.target.value);
     document.getElementById('to').oninput = (e) => searchAddresses(e.target.value);
 
-    // --- ТЕЛЕФОН ---
+    // --- ТЕЛЕФОН (ФИЛЬТР) ---
     const phoneInput = document.getElementById('phone');
     phoneInput.addEventListener('input', () => {
         phoneInput.value = phoneInput.value.replace(/\D/g, '').slice(0, 9);
     });
-
-    // --- ЦЕНА ---
-    const pInput = document.getElementById('priceInput');
-    const pSlider = document.getElementById('priceSlider');
-
-    document.getElementById('customBtn').onclick = () => {
-        if (isOrderActive) return;
-        document.getElementById('modal-price').style.display = 'flex';
-        document.getElementById('minPriceLabel').innerText = minPrice;
-        pInput.value = currentCustomPrice;
-        pSlider.min = minPrice; pSlider.max = minPrice * 5; pSlider.value = currentCustomPrice;
-    };
-
-    pSlider.oninput = () => { pInput.value = pSlider.value; currentCustomPrice = parseInt(pSlider.value); };
-    pInput.oninput = () => { pSlider.value = pInput.value; currentCustomPrice = parseInt(pInput.value) || 0; };
-    pInput.onblur = () => {
-        let val = parseInt(pInput.value);
-        if (isNaN(val) || val < minPrice) val = minPrice;
-        pInput.value = val; pSlider.value = val; currentCustomPrice = val;
-    };
-
-    document.getElementById('submitPrice').onclick = () => {
-        let val = parseInt(pInput.value);
-        if (isNaN(val) || val < minPrice) val = minPrice;
-        currentCustomPrice = val;
-        document.getElementById('price').innerText = currentCustomPrice;
-        document.getElementById('modal-price').style.display = 'none';
-    };
 
     // --- МАРШРУТ ---
     async function calculateRoute(resetPrice = true) {
@@ -274,21 +281,17 @@
         return d.features?.[0]?.place_name || 'Адрес...';
     }
 
-    // --- ПОИСК И СТАТУС ---
+    // --- ПОИСК МАШИНЫ ---
     async function startOrderSearch(isRecovery = false) {
         if (!fromCoords || !toCoords) return;
         isOrderActive = true;
         
         const btn = document.getElementById('orderBtn');
-        btn.disabled = true; 
-        btn.innerText = "В поиске...";
+        btn.disabled = true; btn.innerText = "В поиске...";
         document.getElementById('top-search').style.opacity = '0.5';
         document.getElementById('top-search').style.pointerEvents = 'none';
 
-        map.fitBounds([fromCoords, toCoords], { padding: 100, duration: 2000 });
-        setTimeout(() => map.easeTo({ pitch: 60, bearing: -10, duration: 1500 }), 500);
-
-        showStatus(`<div class="loader"></div> Ищем машину...<br><small>Цена: <b>${currentCustomPrice} zł</b></small>`, true);
+        showStatus(`<div class="loader"></div> Ищем машину...`, true);
 
         if (!isRecovery) {
             const orderData = {
@@ -308,77 +311,18 @@
             await set(ref(db, `orders/${currentOrderId}`), orderData);
         }
 
-        searchTimer = setTimeout(async () => {
-            const snap = await get(ref(db, `orders/${currentOrderId}`));
-            if (snap.val()?.status === 'searching') document.getElementById('modal-timeout').style.display = 'flex';
-        }, 60000);
-
         onValue(ref(db, `orders/${currentOrderId}`), (snap) => {
             const order = snap.val();
             if (order?.status === 'accepted') {
-                clearTimeout(searchTimer);
-                showStatus(`<b>Водитель принял заказ!</b><br>Цена: ${order.price} zł`);
-                startTrackingDriver(order.assignedDriverId);
+                showStatus(`<b>Водитель в пути!</b>`);
+                // Очищаем другие иконки такси, оставляем только нашего
+                for(let id in driverMarkers) driverMarkers[id].remove();
+                driverMarkers = {};
             }
         });
     }
 
-    function startTrackingDriver(driverId) {
-        onValue(ref(db, `drivers/${driverId}/coords`), (snap) => {
-            const coords = snap.val();
-            if (!coords) return;
-            if (!window.dMarker) {
-                const el = document.createElement('div'); el.innerText = '🚕'; el.style.fontSize = '32px';
-                window.dMarker = new maplibregl.Marker(el).setLngLat(coords).addTo(map);
-            } else window.dMarker.setLngLat(coords);
-        });
-    }
-
-    async function checkSession() {
-        if (!currentOrderId) return;
-        const snap = await get(ref(db, `orders/${currentOrderId}`));
-        const order = snap.val();
-
-        if (order && (order.status === 'searching' || order.status === 'accepted')) {
-            isOrderActive = true;
-            document.getElementById('start').style.display = 'none';
-            document.getElementById('name').value = order.clientName;
-            phoneInput.value = order.clientPhone.replace('+48', '');
-            document.getElementById('from').value = order.fromAddress;
-            document.getElementById('to').value = order.toAddress;
-            fromCoords = order.clientCoords;
-            toCoords = order.destCoords;
-            currentCustomPrice = order.price;
-
-            initMap(fromCoords);
-            map.on('load', () => {
-                if (toCoords) destMarker.setLngLat(toCoords).addTo(map);
-                calculateRoute(false);
-                startOrderSearch(true);
-            });
-        }
-    }
-
-    async function resetSystem() {
-        if (currentOrderId) await remove(ref(db, `orders/${currentOrderId}`));
-        localStorage.removeItem('activeOrderId');
-        location.reload(); 
-    }
-
-    function showStatus(text, showCancel = false) {
-        const el = document.getElementById('driver-status');
-        el.innerHTML = text;
-        if (showCancel) {
-            el.innerHTML += `<br><button class="btn btn-cancel" id="abortBtn">Отменить заказ</button>`;
-            setTimeout(() => { 
-                const b = document.getElementById('abortBtn');
-                if(b) b.onclick = resetSystem;
-            }, 100);
-        }
-        el.style.display = 'block';
-    }
-
-    // --- СТАРТ ПРИЛОЖЕНИЯ ---
+    // --- СТАРТ ---
     document.getElementById('startBtn').onclick = () => {
         if (!document.getElementById('name').value || phoneInput.value.length < 9) {
             document.getElementById('phoneError').style.display = 'block'; return;
@@ -393,21 +337,19 @@
         });
     };
 
-    // ГЛАВНОЕ ИСПРАВЛЕНИЕ: Прямое назначение функции клика
-    document.getElementById('orderBtn').addEventListener('click', () => {
-        startOrderSearch();
-    });
+    document.getElementById('orderBtn').addEventListener('click', () => startOrderSearch());
 
-    document.getElementById('timeout-cancel').onclick = resetSystem;
-    document.getElementById('timeout-continue').onclick = () => {
-        document.getElementById('modal-timeout').style.display = 'none';
-        startOrderSearch(true);
-    };
+    function showStatus(text, showCancel = false) {
+        const el = document.getElementById('driver-status');
+        el.innerHTML = text;
+        if (showCancel) {
+            el.innerHTML += `<br><button class="btn btn-cancel" onclick="location.reload()">Отмена</button>`;
+        }
+        el.style.display = 'block';
+    }
 
     document.getElementById('btn2d').onclick = () => map.easeTo({pitch:0, bearing:0});
     document.getElementById('btn3d').onclick = () => map.easeTo({pitch:60, bearing:-10});
-
-    checkSession();
 </script>
 </body>
 </html>
