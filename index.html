@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Taxi App v27 - Auto-Address Fixed</title>
+<title>Taxi App v28 - Secure Price</title>
 
 <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
 <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet"/>
@@ -42,7 +42,7 @@
 
     /* MARKER */
     .car-marker { width: 40px; height: 40px; background: white; border: 2px solid #f1c40f; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 22px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
-    #driver-status { display:none; position:absolute; top:80px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); color:white; padding:15px; border-radius:20px; z-index:1000; }
+    #driver-status { display:none; position:absolute; top:80px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); color:white; padding:15px; border-radius:20px; z-index:1000; text-align:center; }
 </style>
 </head>
 
@@ -89,7 +89,7 @@
 <div class="modal" id="modal-price">
     <div class="modal-content">
         <h3>Установить цену</h3>
-        <p>Рекомендуемая: <b id="minPriceLabel"></b> zł</p>
+        <p>Минимальная: <b id="minPriceLabel"></b> zł</p>
         <input id="priceInput" class="field" type="number">
         <input id="priceSlider" type="range" style="width: 100%; margin-bottom: 20px; accent-color: #f1c40f;">
         <button id="submitPrice" class="btn2 order">Применить</button>
@@ -122,17 +122,12 @@
         return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
-    // --- ГЛАВНОЕ ИСПРАВЛЕНИЕ: Авто-подтяжка адреса ---
     async function setFromAddress(coords) {
         fromCoords = coords;
         const address = await reverseGeocode(coords);
-        const input = document.getElementById('from');
-        const btn = document.getElementById('clear-from');
-        
-        input.value = address;
-        btn.style.display = 'block'; // Показываем крестик сразу
+        document.getElementById('from').value = address;
+        document.getElementById('clear-from').style.display = 'block';
         if(userMarker) userMarker.setLngLat(coords);
-        if(toCoords) calculateRoute();
     }
 
     function initMap(center) {
@@ -145,7 +140,6 @@
         userMarker = new maplibregl.Marker({color:'blue'}).setLngLat(center).addTo(map);
         destMarker = new maplibregl.Marker({color:'red', draggable:true});
 
-        // Сразу вызываем подтяжку текста для центра
         setFromAddress(center);
 
         map.on('click', async (e) => {
@@ -177,7 +171,6 @@
         if (!fromCoords || !toCoords) return;
         const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${fromCoords[0]},${fromCoords[1]};${toCoords[0]},${toCoords[1]}?overview=full&geometries=geojson`);
         const d = await r.json();
-        if(!d.routes[0]) return;
         const route = d.routes[0];
         minPrice = Math.round((route.distance/1000)*2.5 + 10);
         currentCustomPrice = minPrice;
@@ -200,40 +193,52 @@
     }
 
     document.getElementById('startBtn').onclick = () => {
-        if(document.getElementById('phone').value.length < 9) return alert("Введите 9 цифр");
+        if(document.getElementById('phone').value.length < 9) return alert("Введите номер");
         document.getElementById('start').style.display = 'none';
-        navigator.geolocation.getCurrentPosition(p => {
-            const center = [p.coords.longitude, p.coords.latitude];
-            initMap(center);
-        }, () => initMap([21.01, 52.23])); // Варшава если GPS выключен
+        navigator.geolocation.getCurrentPosition(p => initMap([p.coords.longitude, p.coords.latitude]), () => initMap([21.01, 52.23]));
     };
 
-    // Своя цена
+    // --- ИСПРАВЛЕННАЯ ЛОГИКА ЦЕНЫ ---
     document.getElementById('customBtn').onclick = () => {
         document.getElementById('modal-price').style.display = 'flex';
         document.getElementById('minPriceLabel').innerText = minPrice;
-        document.getElementById('priceInput').value = currentCustomPrice;
-        document.getElementById('priceSlider').min = minPrice;
-        document.getElementById('priceSlider').max = minPrice * 5;
-        document.getElementById('priceSlider').value = currentCustomPrice;
+        
+        const pInput = document.getElementById('priceInput');
+        pInput.value = currentCustomPrice;
+        pInput.min = minPrice; // Ограничение в самом поле
+
+        const pSlider = document.getElementById('priceSlider');
+        pSlider.min = minPrice;
+        pSlider.max = minPrice * 5;
+        pSlider.value = currentCustomPrice;
     };
 
-    document.getElementById('priceSlider').oninput = (e) => document.getElementById('priceInput').value = e.target.value;
+    document.getElementById('priceSlider').oninput = (e) => {
+        document.getElementById('priceInput').value = e.target.value;
+    };
 
     document.getElementById('submitPrice').onclick = () => {
-        currentCustomPrice = parseInt(document.getElementById('priceInput').value) || minPrice;
+        let inputVal = parseInt(document.getElementById('priceInput').value);
+        
+        // КРИТИЧЕСКАЯ ПРОВЕРКА: Если введено меньше минималки
+        if (isNaN(inputVal) || inputVal < minPrice) {
+            inputVal = minPrice;
+            alert(`Минимальная цена для этого маршрута: ${minPrice} zł`);
+        }
+
+        currentCustomPrice = inputVal;
         document.getElementById('price').innerText = currentCustomPrice;
         document.getElementById('modal-price').style.display = 'none';
     };
 
-    // Очистка полей
+    // Очистка
     ['from', 'to'].forEach(id => {
         const input = document.getElementById(id);
         const btn = document.getElementById(`clear-${id}`);
         input.oninput = () => btn.style.display = input.value ? 'block' : 'none';
         btn.onclick = () => {
             input.value = ''; btn.style.display = 'none';
-            if(id === 'from') fromCoords = null; else { toCoords = null; destMarker.remove(); }
+            if(id === 'to') { toCoords = null; destMarker.remove(); }
             document.getElementById('panel').style.display = 'none';
             if(map.getSource('route')) map.getSource('route').setData({type:'FeatureCollection', features:[]});
         };
@@ -248,8 +253,7 @@
             clientCoords: fromCoords,
             destCoords: toCoords,
             price: currentCustomPrice,
-            status: "searching",
-            createdAt: Date.now()
+            status: "searching"
         };
         const newOrderRef = push(ref(db, 'orders'));
         await set(newOrderRef, orderData);
