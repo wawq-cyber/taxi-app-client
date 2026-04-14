@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Taxi Order</title>
-    
+<title>Taxi Stable v14 FIREBASE</title>
+
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#f1c40f">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -178,6 +178,8 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
 
 <body>
 
+<div id="driver-status" style="display:none; position:absolute; top:80px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); color:white; padding:10px 20px; border-radius:20px; z-index:1000; text-align:center; box-shadow:0 4px 10px rgba(0,0,0,0.2);"></div>
+
 <div class="start" id="start">
     <div class="box">
         <h3>Данные</h3>
@@ -186,7 +188,7 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
             <span style="font-weight:bold;">+48</span>
             <input id="phone" class="input" placeholder="9 цифр" inputmode="numeric">
         </div>
-        <div class="error" id="phoneError">Неверный формат</div>
+        <div class="error" id="phoneError">Неверный номер</div>
         <button class="btn" id="startBtn">Начать</button>
     </div>
 </div>
@@ -222,8 +224,8 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
         <input id="priceSlider" class="field" type="range">
         <select id="reason" class="field">
             <option>Спешу</option>
-            <option>Опаздываю на работу</option>
-            <option>Опаздываю на автобус</option>
+            <option>На работу</option>
+            <option>На автобус</option>
             <option>Другое</option>
         </select>
         <button id="submitPrice" class="btn2 order">OK</button>
@@ -237,7 +239,8 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-  import { getDatabase, ref, push, set } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+  // ИЗМЕНЕНО: Добавил get и onValue в импорт для логики поиска и отслеживания
+  import { getDatabase, ref, push, set, get, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyAf-9-A72oCswBCQIilwuE6FEYt_MN2PbU",
@@ -253,30 +256,119 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
   const app = initializeApp(firebaseConfig);
   const db = getDatabase(app);
 
-  // Глобальная функция отправки заказа
+  /* --- ДОБАВЛЕНО: Переменные и функции для логики назначения --- */
+  let currentOrderId = null;
+  let rejectedDrivers = [];
+  const alertSound = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
+
+  function getDist(c1, c2) {
+      const R = 6371;
+      const dLat = (c2[1]-c1[1])*Math.PI/180;
+      const dLon = (c2[0]-c1[0])*Math.PI/180;
+      const a = Math.sin(dLat/2)**2 + Math.cos(c1[1]*Math.PI/180)*Math.cos(c2[1]*Math.PI/180)*Math.sin(dLon/2)**2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+
+  function showStatus(text) {
+      const el = document.getElementById('driver-status');
+      if (text) { el.innerHTML = text; el.style.display = 'block'; }
+      else { el.style.display = 'none'; }
+  }
+
+  window.trackDriver = function(driverId) {
+      onValue(ref(db, `drivers/${driverId}/coords`), (snap) => {
+          const coords = snap.val();
+          if (!coords || !window.map) return;
+          
+          if (!window.driverMarker) {
+              const el = document.createElement('div');
+              el.innerText = '🚕';
+              el.style.fontSize = '32px';
+              window.driverMarker = new maplibregl.Marker(el).setLngLat(coords).addTo(window.map);
+          } else {
+              window.driverMarker.setLngLat(coords);
+          }
+          
+          // Уведомление, если водитель ближе 400 метров
+          if (getDist(coords, window.clientCoords) < 0.4) {
+              showStatus("<b>Такси подъезжает!</b><br>Пожалуйста, выходите.");
+              alertSound.play().catch(()=>{});
+          }
+      });
+  };
+  /* ----------------------------------------------------------- */
+
+  // Глобальная функция отправки заказа (ВНУТРИ ПОЛНОСТЬЮ ПЕРЕПИСАНА ПОД АЛГОРИТМ)
   window.sendOrderToFirebase = async function() {
     const name = document.getElementById('name').value;
     const phoneVal = document.getElementById('phone').value;
     
+    showStatus("Ищем ближайшую машину...");
+
+    // Получаем базу водителей
+    const driversSnap = await get(ref(db, 'drivers'));
+    const drivers = driversSnap.val();
+
+    if (!drivers || !window.clientCoords) {
+        alert("Нет свободных водителей или не определено ваше местоположение.");
+        showStatus("");
+        return;
+    }
+
+    // Ищем самого близкого из тех, кто онлайн и не в списке отказавшихся
+    let nearest = Object.keys(drivers)
+        .map(id => ({id, ...drivers[id]}))
+        .filter(d => d.status === 'online' && !rejectedDrivers.includes(d.id))
+        .map(d => ({...d, dist: getDist(window.clientCoords, d.coords)}))
+        .sort((a,b) => a.dist - b.dist)[0];
+
+    if (!nearest) {
+        alert("К сожалению, все ближайшие водители сейчас заняты.");
+        rejectedDrivers = []; // Сброс для новой попытки
+        showStatus("");
+        return;
+    }
+
     const orderData = {
         clientName: name,
         clientPhone: "+48" + phoneVal,
         fromAddress: document.getElementById('from').value,
         toAddress: document.getElementById('to').value,
+        clientCoords: window.clientCoords, // ДОБАВЛЕНО
         distance: document.getElementById('km').innerText,
         duration: document.getElementById('min').innerText,
-        price: customPrice || minPrice,
-        status: "new",
+        price: window.customPrice || window.minPrice,
+        status: "searching", // ИЗМЕНЕНО: теперь статус 'searching', а не 'new'
+        assignedDriverId: nearest.id, // ДОБАВЛЕНО: ID конкретного водителя
         createdAt: Date.now()
     };
 
     try {
-        const ordersRef = ref(db, 'orders');
-        const newOrderRef = push(ordersRef);
-        await set(newOrderRef, orderData);
+        if (!currentOrderId) {
+            const newOrderRef = push(ref(db, 'orders'));
+            currentOrderId = newOrderRef.key;
+        }
         
-        alert("Заказ отправлен! Мы ищем водителя.");
-        document.getElementById('panel').style.display = 'none';
+        await set(ref(db, 'orders/' + currentOrderId), orderData);
+        showStatus(`Предлагаем заказ водителю: ${nearest.name}...`);
+        
+        // Слушатель статуса: ждем ответа от водителя
+        onValue(ref(db, 'orders/' + currentOrderId), (snap) => {
+            const order = snap.val();
+            if (!order) return;
+            
+            if (order.status === 'rejected') {
+                rejectedDrivers.push(order.assignedDriverId);
+                window.sendOrderToFirebase(); // Автоматически пробуем следующего
+            }
+            
+            if (order.status === 'accepted') {
+                showStatus(`<b>Водитель принял заказ!</b><br>Машина выехала к вам.`);
+                document.getElementById('panel').style.display = 'none';
+                window.trackDriver(order.assignedDriverId); // Запускаем слежку на карте
+            }
+        });
+
     } catch (e) {
         alert("Ошибка базы данных: " + e.message);
     }
@@ -461,6 +553,13 @@ document.getElementById('orderBtn').onclick=()=>{
 document.getElementById('btn2d').onclick=()=>map.easeTo({pitch:0,bearing:0});
 document.getElementById('btn3d').onclick=()=>map.easeTo({pitch:60,bearing:-20});
 
+/* --- ДОБАВЛЕНО: Прокси для передачи твоих переменных в модуль Firebase --- */
+setInterval(() => {
+    window.map = map;
+    window.clientCoords = from;
+    window.customPrice = customPrice;
+    window.minPrice = minPrice;
+}, 200);
 </script>
 </body>
 </html>
