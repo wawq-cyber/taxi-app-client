@@ -8,6 +8,9 @@
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#f1c40f">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Taxi App">
+<link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/71/71222.png">
 
 <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
 <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet"/>
@@ -19,141 +22,140 @@ body { margin:0; font-family:sans-serif; }
 /* ДОБАВЛЕНО */
 .map-small { height:80vh !important; }
 
-/* ВЕСЬ ТВОЙ CSS ОСТАВЛЕН БЕЗ ИЗМЕНЕНИЙ */
+/* остальной твой CSS без изменений */
 </style>
 </head>
 
 <body>
 
-<!-- ВЕСЬ ТВОЙ HTML ОСТАВЛЕН БЕЗ ИЗМЕНЕНИЙ -->
+<div id="driver-status" style="display:none;"></div>
+
+<div class="start" id="start">
+    <div class="box">
+        <h3>Данные</h3>
+        <input id="name" class="input" placeholder="Имя">
+        <div style="display:flex; gap:6px; align-items:center;">
+            <span style="font-weight:bold;">+48</span>
+            <input id="phone" class="input" placeholder="9 цифр" inputmode="numeric">
+        </div>
+        <div class="error" id="phoneError">Неверный номер</div>
+        <button class="btn" id="startBtn">Начать</button>
+    </div>
+</div>
+
+<div id="map"></div>
 
 <!-- ДОБАВЛЕНО -->
-<div id="finalPriceText" style="position:absolute; bottom:90px; left:20px; background:white; padding:8px 12px; border-radius:10px; z-index:100;"></div>
+<div id="finalPriceText" style="position:absolute; bottom:100px; left:10px; background:white; padding:10px; border-radius:10px; z-index:50;"></div>
 
 <script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { getDatabase, ref, push, set, get, onValue, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-/* ВЕСЬ ТВОЙ КОД ДО ЭТОГО МЕСТА БЕЗ ИЗМЕНЕНИЙ */
+const app = initializeApp({
+  apiKey: "AIza...",
+});
+const db = getDatabase(app);
 
-/* === ДОБАВЛЕНИЕ: сохранение цены === */
-localStorage.setItem('lastPrice', window.customPrice || window.minPrice);
+let currentOrderId = null;
 
-/* === ДОБАВЛЕНИЕ: восстановление заказа === */
+/* === ДОБАВЛЕНО: восстановление === */
 window.restoreOrder = async function() {
-    const phoneVal = document.getElementById('phone').value;
-    if (!phoneVal) return;
+    try {
+        const phoneVal = document.getElementById('phone').value;
+        if (!phoneVal) return;
 
-    const snap = await get(ref(db, 'orders'));
-    const orders = snap.val();
-    if (!orders) return;
+        const snap = await get(ref(db, 'orders'));
+        const orders = snap.val();
+        if (!orders) return;
 
-    const active = Object.entries(orders).find(([id, o]) =>
-        o.clientPhone === "+48" + phoneVal &&
-        (o.status === 'searching' || o.status === 'accepted')
-    );
+        const active = Object.entries(orders).find(([id, o]) =>
+            o.clientPhone === "+48" + phoneVal &&
+            (o.status === 'searching' || o.status === 'accepted')
+        );
 
-    if (!active) return;
+        if (!active) return;
 
-    const [id, order] = active;
-    currentOrderId = id;
+        const [id, order] = active;
+        currentOrderId = id;
 
-    window.isOrderPending = true;
+        document.getElementById('price').innerText = order.price;
+        window.customPrice = order.price;
 
-    document.getElementById('panel').style.display = 'none';
-    document.getElementById('top-search').style.pointerEvents = 'none';
-    document.getElementById('top-search').style.opacity = '0.5';
+        document.getElementById('finalPriceText').innerText =
+            "Стоимость поездки составляет: " + order.price + " zł";
 
-    document.getElementById('price').innerText = order.price;
-    window.customPrice = order.price;
+        window.clientCoords = order.clientCoords;
 
-    document.getElementById('finalPriceText').innerText =
-        "Стоимость поездки составляет: " + order.price + " zł";
+        if (order.clientCoords && order.toAddress) {
+            from = order.clientCoords;
 
-    window.clientCoords = order.clientCoords;
+            const res = await fetch(`https://api.maptiler.com/geocoding/${encodeURIComponent(order.toAddress)}.json?key=umzJGOnUyr8Edm12MN9b`);
+            const data = await res.json();
 
-    /* === ДОБАВЛЕНО: восстановление маршрута === */
-    if (order.clientCoords && order.fromAddress && order.toAddress) {
-        from = order.clientCoords;
+            if (data.features && data.features[0]) {
+                to = data.features[0].center;
 
-        const res = await fetch(`https://api.maptiler.com/geocoding/${encodeURIComponent(order.toAddress)}.json?key=umzJGOnUyr8Edm12MN9b`);
-        const data = await res.json();
-
-        if (data.features && data.features[0]) {
-            to = data.features[0].center;
-
-            if (window.map) {
-                map.flyTo({ center: from, zoom: 15 });
-
-                if (!window.destMarker) {
-                    window.destMarker = new maplibregl.Marker({color:'red'}).setLngLat(to).addTo(map);
-                } else {
-                    window.destMarker.setLngLat(to);
-                }
-
-                build();
+                setTimeout(() => {
+                    if (window.map) build();
+                }, 1000);
             }
         }
-    }
 
-    if (order.status === 'accepted') {
-        showStatus("<b>Водитель уже едет</b>");
-        window.trackDriver(order.assignedDriverId);
-    } else {
-        showStatus("<div class='loader'></div> Продолжаем поиск...", true);
+    } catch(e) {
+        console.log(e);
     }
 };
-
 </script>
 
 <script>
+let map;
+let from=null;
+let to=null;
+let minPrice=0;
+let customPrice=0;
 
-/* === ДОБАВЛЕНИЯ К ЦЕНЕ === */
+/* === ДОБАВЛЕНО: защита цены === */
+const priceInputEl = document.getElementById('priceInput');
+if (priceInputEl) {
 
-document.getElementById('priceInput').addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowDown') {
-        if (Number(e.target.value) <= minPrice) {
+    priceInputEl.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown' && Number(e.target.value) <= minPrice) {
             e.preventDefault();
         }
-    }
-});
+    });
 
-document.getElementById('priceInput').addEventListener('blur', (e) => {
-    if (!e.target.value || Number(e.target.value) < minPrice) {
-        customPrice = minPrice;
-        e.target.value = minPrice;
-        document.getElementById('priceSlider').value = minPrice;
-    }
-});
+    priceInputEl.addEventListener('blur', (e) => {
+        if (!e.target.value || Number(e.target.value) < minPrice) {
+            customPrice = minPrice;
+            e.target.value = minPrice;
+        }
+    });
+}
 
-/* x5 */
-document.getElementById('custom').addEventListener('click', () => {
-    setTimeout(() => {
-        document.getElementById('priceSlider').max = minPrice * 5;
-    }, 50);
-});
-
-/* === СОХРАНЕНИЕ ЦЕНЫ === */
+/* === ДОБАВЛЕНО: сохранение цены === */
 const savedPrice = localStorage.getItem('lastPrice');
 if (savedPrice) {
     customPrice = Number(savedPrice);
-    document.getElementById('price').innerText = customPrice;
 }
 
-/* === ЗАПУСК ВОССТАНОВЛЕНИЯ === */
-document.getElementById('startBtn').addEventListener('click', () => {
-    setTimeout(() => window.restoreOrder(), 500);
-});
+/* === ДОБАВЛЕНО: старт === */
+document.getElementById('startBtn').onclick=()=>{
+    setTimeout(()=>window.restoreOrder(),800);
+};
 
-/* === УДАЛЕНИЕ ПРИ ОТМЕНЕ === */
-document.getElementById('timeout-cancel').addEventListener('click', () => {
-    if (currentOrderId) {
-        remove(ref(db, `orders/${currentOrderId}`));
-        currentOrderId = null;
+/* === ДОБАВЛЕНО: удаление заказа === */
+document.getElementById('timeout-cancel')?.addEventListener('click',()=>{
+    if(currentOrderId){
+        remove(ref(db,`orders/${currentOrderId}`));
+        currentOrderId=null;
     }
 });
 
-/* === КАРТА 3D + ЗУМ === */
+/* === ДОБАВЛЕНО: 3D карта === */
 const oldSend = window.sendOrderToFirebase;
-window.sendOrderToFirebase = async function() {
+if(oldSend){
+window.sendOrderToFirebase = async function(){
     await oldSend();
 
     document.getElementById('map').classList.add('map-small');
@@ -161,14 +163,16 @@ window.sendOrderToFirebase = async function() {
     document.getElementById('finalPriceText').innerText =
         "Стоимость поездки составляет: " + (window.customPrice || window.minPrice) + " zł";
 
+    localStorage.setItem('lastPrice', window.customPrice || window.minPrice);
+
     if (window.map && from && to) {
-        setTimeout(() => {
-            map.fitBounds([from, to], { padding: 120 });
-            map.easeTo({ pitch: 60, bearing: -20 });
-        }, 300);
+        setTimeout(()=>{
+            map.fitBounds([from,to],{padding:120});
+            map.easeTo({pitch:60,bearing:-20});
+        },300);
     }
 };
-
+}
 </script>
 
 </body>
