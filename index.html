@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Taxi Stable v20 - Full State Recovery</title>
+<title>Taxi Stable v21 - Final Fix</title>
 
 <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
 <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet"/>
@@ -183,7 +183,7 @@
         });
     }
 
-    // --- ПОИСК АДРЕСОВ ---
+    // --- ПОИСК ---
     async function searchAddresses(q) {
         if(q.length < 3 || isOrderActive) return;
         const r = await fetch(`https://api.maptiler.com/geocoding/${encodeURIComponent(q)}.json?key=umzJGOnUyr8Edm12MN9b&limit=5`);
@@ -195,10 +195,10 @@
             el.className = 'item';
             el.innerText = p.place_name;
             el.onclick = () => {
-                const inputId = document.activeElement.id === 'to' ? 'to' : 'from';
-                if(inputId === 'from') { fromCoords = p.center; userMarker.setLngLat(fromCoords); }
+                const activeId = document.activeElement.id === 'to' ? 'to' : 'from';
+                if(activeId === 'from') { fromCoords = p.center; userMarker.setLngLat(fromCoords); }
                 else { toCoords = p.center; destMarker.setLngLat(toCoords).addTo(map); }
-                document.getElementById(inputId).value = p.place_name;
+                document.getElementById(activeId).value = p.place_name;
                 box.innerHTML = '';
                 calculateRoute();
             };
@@ -214,47 +214,6 @@
     phoneInput.addEventListener('input', () => {
         phoneInput.value = phoneInput.value.replace(/\D/g, '').slice(0, 9);
     });
-
-    // --- ВОССТАНОВЛЕНИЕ СЕССИИ (ИСПРАВЛЕНО) ---
-    async function checkSession() {
-        if (!currentOrderId) return;
-        const snap = await get(ref(db, `orders/${currentOrderId}`));
-        const order = snap.val();
-
-        if (order && (order.status === 'searching' || order.status === 'accepted')) {
-            isOrderActive = true;
-            document.getElementById('start').style.display = 'none';
-            
-            // Восстанавливаем данные полей
-            document.getElementById('name').value = order.clientName;
-            phoneInput.value = order.clientPhone.replace('+48', '');
-            document.getElementById('from').value = order.fromAddress;
-            document.getElementById('to').value = order.toAddress;
-
-            fromCoords = order.clientCoords;
-            toCoords = order.destCoords;
-            currentCustomPrice = order.price;
-
-            initMap(fromCoords);
-            
-            map.on('load', () => {
-                // Возвращаем маркер Куда
-                if (toCoords) {
-                    destMarker.setLngLat(toCoords).addTo(map);
-                }
-                
-                calculateRoute(false); // Рисуем маршрут без сброса цены
-                
-                document.getElementById('orderBtn').disabled = true;
-                document.getElementById('orderBtn').innerText = "В поиске...";
-
-                if (order.status === 'accepted') startTrackingDriver(order.assignedDriverId);
-                else startOrderSearch(true);
-            });
-        } else {
-            localStorage.removeItem('activeOrderId');
-        }
-    }
 
     // --- ЦЕНА ---
     const pInput = document.getElementById('priceInput');
@@ -305,8 +264,6 @@
             map.addSource('route', { type: 'geojson', data: route.geometry });
             map.addLayer({ id: 'route', type: 'line', source: 'route', paint: { 'line-color': '#f1c40f', 'line-width': 5 } });
         }
-        
-        // Гарантируем видимость маркера при расчете
         destMarker.setLngLat(toCoords).addTo(map);
         map.fitBounds([fromCoords, toCoords], { padding: 80 });
     }
@@ -319,19 +276,19 @@
 
     // --- ПОИСК И СТАТУС ---
     async function startOrderSearch(isRecovery = false) {
+        if (!fromCoords || !toCoords) return;
         isOrderActive = true;
+        
         const btn = document.getElementById('orderBtn');
-        btn.disabled = true; btn.innerText = "В поиске...";
+        btn.disabled = true; 
+        btn.innerText = "В поиске...";
         document.getElementById('top-search').style.opacity = '0.5';
         document.getElementById('top-search').style.pointerEvents = 'none';
 
         map.fitBounds([fromCoords, toCoords], { padding: 100, duration: 2000 });
         setTimeout(() => map.easeTo({ pitch: 60, bearing: -10, duration: 1500 }), 500);
 
-        showStatus(`
-            <div class="loader"></div> Ищем машину...<br>
-            <small>Стоимость поездки: <b>${currentCustomPrice} zł</b></small>
-        `, true);
+        showStatus(`<div class="loader"></div> Ищем машину...<br><small>Цена: <b>${currentCustomPrice} zł</b></small>`, true);
 
         if (!isRecovery) {
             const orderData = {
@@ -377,6 +334,31 @@
         });
     }
 
+    async function checkSession() {
+        if (!currentOrderId) return;
+        const snap = await get(ref(db, `orders/${currentOrderId}`));
+        const order = snap.val();
+
+        if (order && (order.status === 'searching' || order.status === 'accepted')) {
+            isOrderActive = true;
+            document.getElementById('start').style.display = 'none';
+            document.getElementById('name').value = order.clientName;
+            phoneInput.value = order.clientPhone.replace('+48', '');
+            document.getElementById('from').value = order.fromAddress;
+            document.getElementById('to').value = order.toAddress;
+            fromCoords = order.clientCoords;
+            toCoords = order.destCoords;
+            currentCustomPrice = order.price;
+
+            initMap(fromCoords);
+            map.on('load', () => {
+                if (toCoords) destMarker.setLngLat(toCoords).addTo(map);
+                calculateRoute(false);
+                startOrderSearch(true);
+            });
+        }
+    }
+
     async function resetSystem() {
         if (currentOrderId) await remove(ref(db, `orders/${currentOrderId}`));
         localStorage.removeItem('activeOrderId');
@@ -388,12 +370,15 @@
         el.innerHTML = text;
         if (showCancel) {
             el.innerHTML += `<br><button class="btn btn-cancel" id="abortBtn">Отменить заказ</button>`;
-            setTimeout(() => document.getElementById('abortBtn').onclick = resetSystem, 100);
+            setTimeout(() => { 
+                const b = document.getElementById('abortBtn');
+                if(b) b.onclick = resetSystem;
+            }, 100);
         }
         el.style.display = 'block';
     }
 
-    // --- СТАРТ ---
+    // --- СТАРТ ПРИЛОЖЕНИЯ ---
     document.getElementById('startBtn').onclick = () => {
         if (!document.getElementById('name').value || phoneInput.value.length < 9) {
             document.getElementById('phoneError').style.display = 'block'; return;
@@ -407,6 +392,11 @@
             document.getElementById('from').value = await reverseGeocode(fromCoords);
         });
     };
+
+    // ГЛАВНОЕ ИСПРАВЛЕНИЕ: Прямое назначение функции клика
+    document.getElementById('orderBtn').addEventListener('click', () => {
+        startOrderSearch();
+    });
 
     document.getElementById('timeout-cancel').onclick = resetSystem;
     document.getElementById('timeout-continue').onclick = () => {
