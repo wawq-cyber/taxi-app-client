@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Taxi App v23 - Car Icons</title>
+<title>Taxi App v25 - Complete UI</title>
 
 <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
 <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet"/>
@@ -12,59 +12,41 @@
     body { margin:0; font-family:sans-serif; overflow: hidden; }
     #map { width:100%; height:100vh; }
 
-    /* START SCREEN */
-    .start {
-        position:fixed; inset:0; background:white;
-        display:flex; justify-content:center; align-items:center; z-index:1000;
-    }
-    .box { width:300px; text-align: center; display: flex; flex-direction: column; align-items: center; }
+    /* UI ЭЛЕМЕНТЫ */
+    .start { position:fixed; inset:0; background:white; display:flex; justify-content:center; align-items:center; z-index:1000; }
+    .box { width:300px; text-align: center; }
     .input { width:100%; padding:12px; margin-bottom:10px; border-radius:10px; border:1px solid #ddd; box-sizing: border-box; }
     .btn { width:100%; padding:12px; border:none; border-radius:10px; background:#f1c40f; font-weight:bold; cursor:pointer; }
-    .error { color:red; font-size:12px; display:none; margin-bottom:8px; }
 
-    /* СТИЛЬ ИКОНКИ МАШИНКИ */
-    .marker-taxi {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        background: white;
-        border: 2px solid #333;
-        border-radius: 50%;
-        width: 40px;
-        height: 40px;
-        font-size: 24px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-        cursor: pointer;
-        transition: transform 0.2s;
-    }
-
-    /* SEARCH PANEL */
+    /* ПОЛЯ ВВОДА С КРЕСТИКАМИ */
     .top { position:absolute; top:15px; left:10px; width:320px; z-index:10; }
     .box2 { background:white; padding:10px; border-radius:15px; box-shadow:0 4px 15px rgba(0,0,0,0.1); }
-    .input2 { width:100%; padding:10px; border-radius:10px; border:1px solid #eee; margin-bottom:6px; box-sizing: border-box; }
-    .suggest { background:white; max-height:180px; overflow-y:auto; border-radius:10px; }
-    .item { padding:10px; cursor:pointer; border-bottom:1px solid #eee; font-size: 14px; text-align: left; }
-    .item:hover { background:#f1f1f1; }
-
-    /* BOTTOM PANEL */
-    .panel {
-        position:absolute; bottom:20px; left:10px; width:320px;
-        background:white; padding:15px; border-radius:15px; display:none;
-        z-index:20; box-shadow:0 4px 15px rgba(0,0,0,0.1);
+    
+    .input-wrapper { position: relative; width: 100%; margin-bottom: 6px; }
+    .input2 { width:100%; padding:10px; padding-right: 35px; border-radius:10px; border:1px solid #eee; box-sizing: border-box; font-size: 14px; }
+    
+    .clear-btn { 
+        position: absolute; right: 10px; top: 50%; transform: translateY(-50%); 
+        font-size: 20px; color: #ccc; cursor: pointer; display: none; user-select: none;
     }
+    .clear-btn:hover { color: #666; }
+
+    .suggest { background:white; max-height:180px; overflow-y:auto; border-radius:10px; }
+    .item { padding:10px; cursor:pointer; border-bottom:1px solid #eee; font-size: 14px; }
+
+    /* ПАНЕЛЬ ЗАКАЗА */
+    .panel { position:absolute; bottom:20px; left:10px; width:320px; background:white; padding:15px; border-radius:15px; display:none; box-shadow:0 4px 15px rgba(0,0,0,0.1); z-index:20; }
     .btn2 { flex:1; padding:12px; border:none; border-radius:10px; font-weight:bold; cursor:pointer; }
     .order { background:#f1c40f; }
-    .price-btn { background:#e74c3c; color:white; }
 
-    /* STATUS */
-    #driver-status {
-        display:none; position:absolute; top:80px; left:50%; transform:translateX(-50%);
-        background:rgba(0,0,0,0.85); color:white; padding:15px; border-radius:20px;
-        z-index:1000; text-align:center; width: 85%; max-width: 320px;
+    /* СТИЛЬ МАШИНКИ */
+    .car-marker {
+        width: 40px; height: 40px; background: white; border: 2px solid #f1c40f;
+        border-radius: 50%; display: flex; justify-content: center; align-items: center;
+        font-size: 22px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); cursor: pointer;
     }
 
-    .loader { border: 3px solid #f3f3f3; border-top: 3px solid #f1c40f; border-radius: 50%; width: 18px; height: 18px; animation: spin 1s linear infinite; display: inline-block; }
-    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    #driver-status { display:none; position:absolute; top:80px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); color:white; padding:15px; border-radius:20px; z-index:1000; text-align:center; }
 </style>
 </head>
 
@@ -74,13 +56,10 @@
 
 <div class="start" id="start">
     <div class="box">
-        <h3 style="margin-bottom: 20px;">Taxi App</h3>
+        <h3>Taxi Service</h3>
         <input id="name" class="input" placeholder="Ваше имя">
-        <div style="display:flex; gap:10px; align-items:center; width: 100%; margin-bottom: 10px;">
-            <span style="font-weight:bold; background: #eee; padding: 12px; border-radius: 10px;">+48</span>
-            <input id="phone" class="input" style="margin-bottom:0;" placeholder="9 цифр" inputmode="numeric">
-        </div>
-        <button class="btn" id="startBtn">Начать</button>
+        <input id="phone" class="input" placeholder="9 цифр телефона" inputmode="numeric">
+        <button class="btn" id="startBtn">Начать работу</button>
     </div>
 </div>
 
@@ -88,33 +67,32 @@
 
 <div class="top" id="top-search">
     <div class="box2">
-        <input id="from" class="input2" placeholder="Откуда">
-        <input id="to" class="input2" placeholder="Куда">
+        <div class="input-wrapper">
+            <input id="from" class="input2" placeholder="Откуда">
+            <span class="clear-btn" id="clear-from">&times;</span>
+        </div>
+        <div class="input-wrapper">
+            <input id="to" class="input2" placeholder="Куда">
+            <span class="clear-btn" id="clear-to">&times;</span>
+        </div>
         <div class="suggest" id="suggest"></div>
     </div>
 </div>
 
 <div class="panel" id="panel">
-    <div>Путь: <b id="km">0</b> км (<b id="min">0</b> мин)</div>
-    <div style="font-size: 18px; margin-top: 5px;">Цена: <b id="price">0</b> zł</div>
-    <div style="display:flex; gap:10px; margin-top:10px;">
-        <button class="btn2 price-btn" id="customBtn">Своя цена</button>
-        <button class="btn2 order" id="orderBtn">Заказать</button>
-    </div>
+    <div style="margin-bottom: 10px;">Расстояние: <b id="km">0</b> км</div>
+    <div style="font-size: 18px; margin-bottom: 10px;">Цена: <b id="price">0</b> zł</div>
+    <button class="btn2 order" style="width:100%" id="orderBtn">Заказать такси</button>
 </div>
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getDatabase, ref, push, set, get, onValue, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+    import { getDatabase, ref, push, set, onValue, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
     const firebaseConfig = {
         apiKey: "AIzaSyAf-9-A72oCswBCQIilwuE6FEYt_MN2PbU",
-        authDomain: "taxi-app-41298.firebaseapp.com",
         databaseURL: "https://taxi-app-41298-default-rtdb.europe-west1.firebasedatabase.app",
         projectId: "taxi-app-41298",
-        storageBucket: "taxi-app-41298.firebasestorage.app",
-        messagingSenderId: "1011260164934",
-        appId: "1:1011260164934:web:1972a0315325b3f5d3b347"
     };
 
     const app = initializeApp(firebaseConfig);
@@ -122,21 +100,19 @@
 
     let map, userMarker, destMarker;
     let fromCoords = null, toCoords = null;
-    let currentCustomPrice = 0, minPrice = 0;
-    let currentOrderId = localStorage.getItem('activeOrderId');
-    let driverMarkers = {}; // Для иконок машинок
+    let driverMarkers = {};
+    let isOrderActive = false;
 
-    // --- ВСПОМОГАТЕЛЬНАЯ: Создание элемента машинки ---
-    function createCarElement() {
+    // --- КРАСИВЫЙ МАРКЕР МАШИНКИ ---
+    function createCarIcon() {
         const el = document.createElement('div');
-        el.className = 'marker-taxi';
-        el.innerHTML = '🚕'; // Можно заменить на <img src="car.png">
+        el.className = 'car-marker';
+        el.innerHTML = '🚕';
         return el;
     }
 
-    // --- РАССТОЯНИЕ ---
+    // --- ГЕО-ФИЛЬТР (15 км) ---
     function getDistance(c1, c2) {
-        if (!c1 || !c2) return 999;
         const R = 6371;
         const dLat = (c2[1] - c1[1]) * Math.PI / 180;
         const dLon = (c2[0] - c1[0]) * Math.PI / 180;
@@ -146,120 +122,103 @@
         return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
-    // --- ОТОБРАЖЕНИЕ ВСЕХ МАШИН РЯДОМ ---
-    function trackNearbyDrivers() {
+    // --- КАРТА ---
+    function initMap(center) {
+        map = new maplibregl.Map({
+            container: 'map',
+            style: 'https://api.maptiler.com/maps/streets-v4/style.json?key=umzJGOnUyr8Edm12MN9b',
+            center: center,
+            zoom: 14
+        });
+
+        userMarker = new maplibregl.Marker({color: 'blue'}).setLngLat(center).addTo(map);
+        destMarker = new maplibregl.Marker({color: 'red', draggable: true});
+
+        map.on('click', async (e) => {
+            if (isOrderActive) return;
+            toCoords = [e.lngLat.lng, e.lngLat.lat];
+            destMarker.setLngLat(toCoords).addTo(map);
+            document.getElementById('to').value = await reverseGeocode(toCoords);
+            document.getElementById('clear-to').style.display = 'block';
+            calculateRoute();
+        });
+
+        // Следим за водителями рядом
         onValue(ref(db, 'drivers'), (snap) => {
-            const data = snap.val();
-            if (!data || !fromCoords) return;
-
-            for (let id in data) {
-                const driver = data[id];
-                const dist = getDistance(fromCoords, driver.coords);
-
-                if (driver.status === 'online' && dist < 15) {
-                    if (driverMarkers[id]) {
-                        driverMarkers[id].setLngLat(driver.coords);
-                    } else {
-                        // Создаем иконку-машинку
-                        const carEl = createCarElement();
-                        driverMarkers[id] = new maplibregl.Marker(carEl)
-                            .setLngLat(driver.coords)
-                            .addTo(map);
-                    }
-                } else {
-                    if (driverMarkers[id]) {
-                        driverMarkers[id].remove();
-                        delete driverMarkers[id];
-                    }
+            const drivers = snap.val();
+            if (!drivers || !fromCoords) return;
+            for (let id in drivers) {
+                const d = drivers[id];
+                const dist = getDistance(fromCoords, d.coords);
+                if (d.status === 'online' && dist < 15) {
+                    if (driverMarkers[id]) driverMarkers[id].setLngLat(d.coords);
+                    else driverMarkers[id] = new maplibregl.Marker({element: createCarIcon()}).setLngLat(d.coords).addTo(map);
+                } else if (driverMarkers[id]) {
+                    driverMarkers[id].remove(); delete driverMarkers[id];
                 }
             }
         });
     }
 
-    // --- КАРТА ---
-    function initMap(center = [21.01, 52.23]) {
-        map = new maplibregl.Map({
-            container: 'map',
-            style: 'https://api.maptiler.com/maps/streets-v4/style.json?key=umzJGOnUyr8Edm12MN9b',
-            center: center, 
-            zoom: 13
-        });
-        userMarker = new maplibregl.Marker({color:'blue'}).setLngLat(center).addTo(map);
-        destMarker = new maplibregl.Marker({color:'red', draggable:true});
-
-        map.on('load', () => { trackNearbyDrivers(); });
-
-        map.on('click', async (e) => {
-            toCoords = [e.lngLat.lng, e.lngLat.lat];
-            destMarker.setLngLat(toCoords).addTo(map);
-            document.getElementById('to').value = await reverseGeocode(toCoords);
-            calculateRoute();
+    // --- ЛОГИКА ОЧИСТКИ ПОЛЕЙ ---
+    function setupInputUI() {
+        ['from', 'to'].forEach(id => {
+            const input = document.getElementById(id);
+            const btn = document.getElementById(`clear-${id}`);
+            
+            input.addEventListener('input', () => btn.style.display = input.value ? 'block' : 'none');
+            
+            btn.onclick = () => {
+                input.value = '';
+                btn.style.display = 'none';
+                if (id === 'from') { fromCoords = null; } 
+                else { toCoords = null; destMarker.remove(); }
+                if (map.getSource('route')) map.getSource('route').setData({type: 'FeatureCollection', features: []});
+                document.getElementById('panel').style.display = 'none';
+            };
         });
     }
 
-    // --- МАРШРУТ И ЦЕНА ---
+    // --- МАРШРУТ ---
     async function calculateRoute() {
         if (!fromCoords || !toCoords) return;
         const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${fromCoords[0]},${fromCoords[1]};${toCoords[0]},${toCoords[1]}?overview=full&geometries=geojson`);
         const d = await r.json();
         const route = d.routes[0];
-
-        minPrice = Math.round((route.distance/1000) * 2.5 + 10);
-        currentCustomPrice = minPrice;
-
+        
+        const price = Math.round((route.distance/1000) * 2.5 + 10);
         document.getElementById('panel').style.display = 'block';
         document.getElementById('km').innerText = (route.distance/1000).toFixed(1);
-        document.getElementById('min').innerText = Math.round(route.duration/60);
-        document.getElementById('price').innerText = currentCustomPrice;
+        document.getElementById('price').innerText = price;
 
         if (map.getSource('route')) map.getSource('route').setData(route.geometry);
         else {
             map.addSource('route', { type: 'geojson', data: route.geometry });
-            map.addLayer({ id: 'route', type: 'line', source: 'route', paint: { 'line-color': '#f1c40f', 'line-width': 5 } });
+            map.addLayer({ id: 'route', type: 'line', source: 'route', paint: { 'line-color': '#f1c40f', 'line-width': 6 } });
         }
-        map.fitBounds([fromCoords, toCoords], { padding: 80 });
     }
 
     async function reverseGeocode(c) {
         const r = await fetch(`https://api.maptiler.com/geocoding/${c[0]},${c[1]}.json?key=umzJGOnUyr8Edm12MN9b`);
         const d = await r.json();
-        return d.features?.[0]?.place_name || 'Адрес...';
+        return d.features?.[0]?.place_name || 'Точка на карте';
     }
 
-    // --- СТАРТ ---
+    // --- КНОПКИ ---
     document.getElementById('startBtn').onclick = () => {
         document.getElementById('start').style.display = 'none';
-        initMap();
-        navigator.geolocation.getCurrentPosition(async pos => {
-            fromCoords = [pos.coords.longitude, pos.coords.latitude];
-            userMarker.setLngLat(fromCoords);
-            map.flyTo({center: fromCoords, zoom: 15});
-            document.getElementById('from').value = await reverseGeocode(fromCoords);
+        navigator.geolocation.getCurrentPosition(p => {
+            fromCoords = [p.coords.longitude, p.coords.latitude];
+            initMap(fromCoords);
+            setupInputUI();
         });
     };
 
-    document.getElementById('orderBtn').onclick = async () => {
-        const orderData = {
-            clientName: document.getElementById('name').value,
-            clientPhone: "+48" + document.getElementById('phone').value,
-            fromAddress: document.getElementById('from').value,
-            toAddress: document.getElementById('to').value,
-            clientCoords: fromCoords,
-            destCoords: toCoords,
-            price: currentCustomPrice,
-            status: "searching"
-        };
-        const res = push(ref(db, 'orders'));
-        await set(res, orderData);
-        currentOrderId = res.key;
-        showStatus(`<div class="loader"></div> Ищем такси...`);
+    document.getElementById('orderBtn').onclick = () => {
+        isOrderActive = true;
+        document.getElementById('driver-status').innerHTML = "Ищем такси...";
+        document.getElementById('driver-status').style.display = "block";
     };
-
-    function showStatus(text) {
-        const el = document.getElementById('driver-status');
-        el.innerHTML = text;
-        el.style.display = 'block';
-    }
 
 </script>
 </body>
