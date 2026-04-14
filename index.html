@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Taxi</title>
+<title>Taxi Stable v20 FIREBASE</title>
 
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#f1c40f">
@@ -19,23 +19,31 @@
 body { margin:0; font-family:sans-serif; overflow: hidden; touch-action: manipulation; }
 #map { width:100%; height:100vh; }
 
+/* ОКНО ВХОДА */
 .start { position:fixed; inset:0; background:white; display:flex; justify-content:center; align-items:center; z-index:2000; }
 .box { width:300px; }
 .input { width:100%; padding:12px; margin-bottom:10px; border-radius:10px; border:1px solid #ddd; box-sizing: border-box; }
 .btn { width:100%; padding:12px; border:none; border-radius:10px; background:#f1c40f; font-weight:bold; cursor:pointer; }
 .error { color:red; font-size:12px; display:none; margin-top:-5px; margin-bottom:8px; }
 
+/* ПОИСК */
 .top { position:absolute; top:15px; left:10px; width:320px; z-index:10; transition: opacity 0.3s; }
 .box2 { background:white; padding:10px; border-radius:15px; box-shadow:0 4px 15px rgba(0,0,0,0.1); }
 .input2 { width:100%; padding:10px; border-radius:10px; border:1px solid #eee; margin-bottom:6px; box-sizing: border-box; }
 .logout-btn { font-size: 11px; color: #999; text-decoration: underline; cursor: pointer; float: right; margin-bottom: 5px; }
 
+/* ПАНЕЛЬ ЗАКАЗА */
 .panel { position:absolute; bottom:20px; left:10px; width:320px; background:white; padding:12px; border-radius:15px; display:none; z-index:20; box-shadow:0 4px 15px rgba(0,0,0,0.1); }
 .row { display:flex; gap:10px; margin-top:10px; }
 .btn2 { flex:1; padding:12px; border:none; border-radius:10px; font-weight:bold; cursor:pointer; }
 .order { background:#f1c40f; }
 .price { background:#e74c3c; color:white; }
 
+/* КНОПКИ 2D/3D */
+.ctrl { position:absolute; right:10px; top:120px; z-index:10; display:flex; flex-direction:column; gap:8px; }
+.ctrl button { background:white; border:none; padding:10px; border-radius:8px; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,0.2); font-weight:bold; }
+
+/* СТАТУС */
 #driver-status { display:none; position:absolute; top:100px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.85); color:white; padding:15px 25px; border-radius:20px; z-index:1000; text-align:center; box-shadow:0 4px 15px rgba(0,0,0,0.3); width: 80%; max-width: 320px; }
 .loader { border: 3px solid #f3f3f3; border-top: 3px solid #f1c40f; border-radius: 50%; width: 18px; height: 18px; animation: spin 1s linear infinite; display: inline-block; vertical-align: middle; margin-right: 8px; }
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -69,6 +77,11 @@ body { margin:0; font-family:sans-serif; overflow: hidden; touch-action: manipul
         <input id="from" class="input2" placeholder="Откуда (текущее место)" readonly>
         <input id="to" class="input2" placeholder="Куда (нажмите на карту)">
     </div>
+</div>
+
+<div class="ctrl">
+    <button id="btn2d">2D</button>
+    <button id="btn3d">3D</button>
 </div>
 
 <div class="panel" id="panel">
@@ -190,11 +203,9 @@ function initApp() {
     destMarker = new maplibregl.Marker({color:'red', draggable:true});
 
     map.on('load', () => {
-        // Летим к пользователю сразу при запуске
         navigator.geolocation.getCurrentPosition(async p => {
             from = [p.coords.longitude, p.coords.latitude];
             userMarker.setLngLat(from);
-            // ВОТ ОНА, ФЛАЙТУ!
             map.flyTo({center: from, zoom: 15, duration: 2000});
             document.getElementById('from').value = await reverse(from);
         });
@@ -215,6 +226,10 @@ function initApp() {
         document.getElementById('to').value = await reverse(to);
         build();
     });
+
+    // ОБРАБОТЧИКИ 2D/3D
+    document.getElementById('btn2d').onclick = () => map.easeTo({pitch: 0, bearing: 0});
+    document.getElementById('btn3d').onclick = () => map.easeTo({pitch: 60, bearing: -20});
 }
 
 async function build() {
@@ -240,8 +255,6 @@ async function build() {
         map.addLayer({id:'route', type:'line', source:'route', paint:{'line-color':'#f1c40f', 'line-width':5}});
     }
     destMarker.setLngLat(to).addTo(map);
-    
-    // Плавный охват всего маршрута
     map.fitBounds([from, to], {padding: 80, duration: 1500});
 }
 
