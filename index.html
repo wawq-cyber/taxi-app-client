@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Taxi App v22 - Geo-Filtering</title>
+<title>Taxi App v23 - Car Icons</title>
 
 <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
 <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet"/>
@@ -22,8 +22,24 @@
     .btn { width:100%; padding:12px; border:none; border-radius:10px; background:#f1c40f; font-weight:bold; cursor:pointer; }
     .error { color:red; font-size:12px; display:none; margin-bottom:8px; }
 
+    /* СТИЛЬ ИКОНКИ МАШИНКИ */
+    .marker-taxi {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: white;
+        border: 2px solid #333;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        font-size: 24px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        cursor: pointer;
+        transition: transform 0.2s;
+    }
+
     /* SEARCH PANEL */
-    .top { position:absolute; top:15px; left:10px; width:320px; z-index:10; transition: opacity 0.3s; }
+    .top { position:absolute; top:15px; left:10px; width:320px; z-index:10; }
     .box2 { background:white; padding:10px; border-radius:15px; box-shadow:0 4px 15px rgba(0,0,0,0.1); }
     .input2 { width:100%; padding:10px; border-radius:10px; border:1px solid #eee; margin-bottom:6px; box-sizing: border-box; }
     .suggest { background:white; max-height:180px; overflow-y:auto; border-radius:10px; }
@@ -36,10 +52,8 @@
         background:white; padding:15px; border-radius:15px; display:none;
         z-index:20; box-shadow:0 4px 15px rgba(0,0,0,0.1);
     }
-    .row { display:flex; gap:10px; margin-top:10px; }
-    .btn2 { flex:1; padding:12px; border:none; border-radius:10px; font-weight:bold; cursor:pointer; transition: 0.3s; }
+    .btn2 { flex:1; padding:12px; border:none; border-radius:10px; font-weight:bold; cursor:pointer; }
     .order { background:#f1c40f; }
-    .order:disabled { background: #ccc !important; color: #888; cursor: not-allowed; }
     .price-btn { background:#e74c3c; color:white; }
 
     /* STATUS */
@@ -49,19 +63,7 @@
         z-index:1000; text-align:center; width: 85%; max-width: 320px;
     }
 
-    /* MODALS */
-    .modal {
-        position:fixed; inset:0; background:rgba(0,0,0,0.5);
-        display:none; justify-content:center; align-items:center; z-index:9999;
-    }
-    .modal-content { background:white; padding:20px; border-radius:15px; width:300px; text-align: center; }
-    .field { width:100%; padding:12px; margin-bottom:15px; border-radius:10px; border:1px solid #ddd; box-sizing: border-box; font-size: 16px; }
-
-    .ctrl { position:absolute; right:10px; top:120px; z-index:10; display:flex; flex-direction:column; gap:8px; }
-    .ctrl button { background:white; border:none; padding:10px; border-radius:8px; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,0.2); }
-
-    .btn-cancel { background: #e74c3c; color: white; margin-top: 10px; width: 100%; }
-    .loader { border: 3px solid #f3f3f3; border-top: 3px solid #f1c40f; border-radius: 50%; width: 18px; height: 18px; animation: spin 1s linear infinite; display: inline-block; vertical-align: middle; margin-right: 8px; }
+    .loader { border: 3px solid #f3f3f3; border-top: 3px solid #f1c40f; border-radius: 50%; width: 18px; height: 18px; animation: spin 1s linear infinite; display: inline-block; }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 </style>
 </head>
@@ -78,7 +80,6 @@
             <span style="font-weight:bold; background: #eee; padding: 12px; border-radius: 10px;">+48</span>
             <input id="phone" class="input" style="margin-bottom:0;" placeholder="9 цифр" inputmode="numeric">
         </div>
-        <div class="error" id="phoneError">Минимум 9 цифр</div>
         <button class="btn" id="startBtn">Начать</button>
     </div>
 </div>
@@ -94,29 +95,12 @@
 </div>
 
 <div class="panel" id="panel">
-    <div style="font-size: 14px; color: #666;">Клиент: <b id="outName" style="color: #000;"></b></div>
-    <hr style="border: 0; border-top: 1px solid #eee; margin: 10px 0;">
     <div>Путь: <b id="km">0</b> км (<b id="min">0</b> мин)</div>
     <div style="font-size: 18px; margin-top: 5px;">Цена: <b id="price">0</b> zł</div>
-    <div class="row">
+    <div style="display:flex; gap:10px; margin-top:10px;">
         <button class="btn2 price-btn" id="customBtn">Своя цена</button>
         <button class="btn2 order" id="orderBtn">Заказать</button>
     </div>
-</div>
-
-<div class="modal" id="modal-price">
-    <div class="modal-content">
-        <h3 style="margin-top: 0;">Установить цену</h3>
-        <p style="font-size: 14px; color: #666;">Рекомендуемая: <b id="minPriceLabel"></b> zł</p>
-        <input id="priceInput" class="field" type="number" min="0" placeholder="Сумма">
-        <input id="priceSlider" type="range" style="width: 100%; margin-bottom: 20px; accent-color: #f1c40f;">
-        <button id="submitPrice" class="btn2 order">Применить</button>
-    </div>
-</div>
-
-<div class="ctrl">
-    <button id="btn2d">2D</button>
-    <button id="btn3d">3D</button>
 </div>
 
 <script type="module">
@@ -138,12 +122,19 @@
 
     let map, userMarker, destMarker;
     let fromCoords = null, toCoords = null;
-    let minPrice = 0, currentCustomPrice = 0;
+    let currentCustomPrice = 0, minPrice = 0;
     let currentOrderId = localStorage.getItem('activeOrderId');
-    let isOrderActive = false;
-    let driverMarkers = {}; // Память для иконок такси
+    let driverMarkers = {}; // Для иконок машинок
 
-    // --- ФУНКЦИЯ РАССТОЯНИЯ (КМ) ---
+    // --- ВСПОМОГАТЕЛЬНАЯ: Создание элемента машинки ---
+    function createCarElement() {
+        const el = document.createElement('div');
+        el.className = 'marker-taxi';
+        el.innerHTML = '🚕'; // Можно заменить на <img src="car.png">
+        return el;
+    }
+
+    // --- РАССТОЯНИЕ ---
     function getDistance(c1, c2) {
         if (!c1 || !c2) return 999;
         const R = 6371;
@@ -155,10 +146,9 @@
         return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
-    // --- ВИЗУАЛИЗАЦИЯ СВОБОДНЫХ ВОДИТЕЛЕЙ ---
+    // --- ОТОБРАЖЕНИЕ ВСЕХ МАШИН РЯДОМ ---
     function trackNearbyDrivers() {
-        const driversRef = ref(db, 'drivers');
-        onValue(driversRef, (snap) => {
+        onValue(ref(db, 'drivers'), (snap) => {
             const data = snap.val();
             if (!data || !fromCoords) return;
 
@@ -166,17 +156,17 @@
                 const driver = data[id];
                 const dist = getDistance(fromCoords, driver.coords);
 
-                // ФИЛЬТР: Статус "online" И расстояние < 15 км
                 if (driver.status === 'online' && dist < 15) {
                     if (driverMarkers[id]) {
                         driverMarkers[id].setLngLat(driver.coords);
                     } else {
-                        const el = document.createElement('div');
-                        el.innerHTML = '🚕'; el.style.fontSize = '24px';
-                        driverMarkers[id] = new maplibregl.Marker(el).setLngLat(driver.coords).addTo(map);
+                        // Создаем иконку-машинку
+                        const carEl = createCarElement();
+                        driverMarkers[id] = new maplibregl.Marker(carEl)
+                            .setLngLat(driver.coords)
+                            .addTo(map);
                     }
                 } else {
-                    // Удаляем, если уехал далеко или ушел в оффлайн
                     if (driverMarkers[id]) {
                         driverMarkers[id].remove();
                         delete driverMarkers[id];
@@ -186,7 +176,7 @@
         });
     }
 
-    // --- ИНИЦИАЛИЗАЦИЯ КАРТЫ ---
+    // --- КАРТА ---
     function initMap(center = [21.01, 52.23]) {
         map = new maplibregl.Map({
             container: 'map',
@@ -194,84 +184,39 @@
             center: center, 
             zoom: 13
         });
-        map.addControl(new maplibregl.NavigationControl(), 'top-right');
         userMarker = new maplibregl.Marker({color:'blue'}).setLngLat(center).addTo(map);
         destMarker = new maplibregl.Marker({color:'red', draggable:true});
 
-        map.on('load', () => {
-            trackNearbyDrivers(); // Запускаем отображение такси при загрузке
-        });
+        map.on('load', () => { trackNearbyDrivers(); });
 
         map.on('click', async (e) => {
-            if (isOrderActive) return;
             toCoords = [e.lngLat.lng, e.lngLat.lat];
             destMarker.setLngLat(toCoords).addTo(map);
             document.getElementById('to').value = await reverseGeocode(toCoords);
             calculateRoute();
         });
-
-        destMarker.on('dragend', async () => {
-            if (isOrderActive) return;
-            toCoords = [destMarker.getLngLat().lng, destMarker.getLngLat().lat];
-            document.getElementById('to').value = await reverseGeocode(toCoords);
-            calculateRoute();
-        });
     }
 
-    // --- ПОИСК АДРЕСОВ ---
-    async function searchAddresses(q) {
-        if(q.length < 3 || isOrderActive) return;
-        const r = await fetch(`https://api.maptiler.com/geocoding/${encodeURIComponent(q)}.json?key=umzJGOnUyr8Edm12MN9b&limit=5`);
-        const d = await r.json();
-        const box = document.getElementById('suggest');
-        box.innerHTML = '';
-        d.features.forEach(p => {
-            const el = document.createElement('div');
-            el.className = 'item';
-            el.innerText = p.place_name;
-            el.onclick = () => {
-                const activeId = document.activeElement.id === 'to' ? 'to' : 'from';
-                if(activeId === 'from') { fromCoords = p.center; userMarker.setLngLat(fromCoords); }
-                else { toCoords = p.center; destMarker.setLngLat(toCoords).addTo(map); }
-                document.getElementById(activeId).value = p.place_name;
-                box.innerHTML = '';
-                calculateRoute();
-            };
-            box.appendChild(el);
-        });
-    }
-
-    document.getElementById('from').oninput = (e) => searchAddresses(e.target.value);
-    document.getElementById('to').oninput = (e) => searchAddresses(e.target.value);
-
-    // --- ТЕЛЕФОН (ФИЛЬТР) ---
-    const phoneInput = document.getElementById('phone');
-    phoneInput.addEventListener('input', () => {
-        phoneInput.value = phoneInput.value.replace(/\D/g, '').slice(0, 9);
-    });
-
-    // --- МАРШРУТ ---
-    async function calculateRoute(resetPrice = true) {
+    // --- МАРШРУТ И ЦЕНА ---
+    async function calculateRoute() {
         if (!fromCoords || !toCoords) return;
         const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${fromCoords[0]},${fromCoords[1]};${toCoords[0]},${toCoords[1]}?overview=full&geometries=geojson`);
         const d = await r.json();
         const route = d.routes[0];
 
         minPrice = Math.round((route.distance/1000) * 2.5 + 10);
-        if (resetPrice) currentCustomPrice = minPrice;
+        currentCustomPrice = minPrice;
 
         document.getElementById('panel').style.display = 'block';
         document.getElementById('km').innerText = (route.distance/1000).toFixed(1);
         document.getElementById('min').innerText = Math.round(route.duration/60);
         document.getElementById('price').innerText = currentCustomPrice;
-        document.getElementById('outName').innerText = document.getElementById('name').value;
 
         if (map.getSource('route')) map.getSource('route').setData(route.geometry);
         else {
             map.addSource('route', { type: 'geojson', data: route.geometry });
             map.addLayer({ id: 'route', type: 'line', source: 'route', paint: { 'line-color': '#f1c40f', 'line-width': 5 } });
         }
-        destMarker.setLngLat(toCoords).addTo(map);
         map.fitBounds([fromCoords, toCoords], { padding: 80 });
     }
 
@@ -281,52 +226,8 @@
         return d.features?.[0]?.place_name || 'Адрес...';
     }
 
-    // --- ПОИСК МАШИНЫ ---
-    async function startOrderSearch(isRecovery = false) {
-        if (!fromCoords || !toCoords) return;
-        isOrderActive = true;
-        
-        const btn = document.getElementById('orderBtn');
-        btn.disabled = true; btn.innerText = "В поиске...";
-        document.getElementById('top-search').style.opacity = '0.5';
-        document.getElementById('top-search').style.pointerEvents = 'none';
-
-        showStatus(`<div class="loader"></div> Ищем машину...`, true);
-
-        if (!isRecovery) {
-            const orderData = {
-                clientName: document.getElementById('name').value,
-                clientPhone: "+48" + phoneInput.value,
-                fromAddress: document.getElementById('from').value,
-                toAddress: document.getElementById('to').value,
-                clientCoords: fromCoords,
-                destCoords: toCoords,
-                price: currentCustomPrice,
-                status: "searching",
-                createdAt: Date.now()
-            };
-            const newOrderRef = push(ref(db, 'orders'));
-            currentOrderId = newOrderRef.key;
-            localStorage.setItem('activeOrderId', currentOrderId);
-            await set(ref(db, `orders/${currentOrderId}`), orderData);
-        }
-
-        onValue(ref(db, `orders/${currentOrderId}`), (snap) => {
-            const order = snap.val();
-            if (order?.status === 'accepted') {
-                showStatus(`<b>Водитель в пути!</b>`);
-                // Очищаем другие иконки такси, оставляем только нашего
-                for(let id in driverMarkers) driverMarkers[id].remove();
-                driverMarkers = {};
-            }
-        });
-    }
-
     // --- СТАРТ ---
     document.getElementById('startBtn').onclick = () => {
-        if (!document.getElementById('name').value || phoneInput.value.length < 9) {
-            document.getElementById('phoneError').style.display = 'block'; return;
-        }
         document.getElementById('start').style.display = 'none';
         initMap();
         navigator.geolocation.getCurrentPosition(async pos => {
@@ -337,19 +238,29 @@
         });
     };
 
-    document.getElementById('orderBtn').addEventListener('click', () => startOrderSearch());
+    document.getElementById('orderBtn').onclick = async () => {
+        const orderData = {
+            clientName: document.getElementById('name').value,
+            clientPhone: "+48" + document.getElementById('phone').value,
+            fromAddress: document.getElementById('from').value,
+            toAddress: document.getElementById('to').value,
+            clientCoords: fromCoords,
+            destCoords: toCoords,
+            price: currentCustomPrice,
+            status: "searching"
+        };
+        const res = push(ref(db, 'orders'));
+        await set(res, orderData);
+        currentOrderId = res.key;
+        showStatus(`<div class="loader"></div> Ищем такси...`);
+    };
 
-    function showStatus(text, showCancel = false) {
+    function showStatus(text) {
         const el = document.getElementById('driver-status');
         el.innerHTML = text;
-        if (showCancel) {
-            el.innerHTML += `<br><button class="btn btn-cancel" onclick="location.reload()">Отмена</button>`;
-        }
         el.style.display = 'block';
     }
 
-    document.getElementById('btn2d').onclick = () => map.easeTo({pitch:0, bearing:0});
-    document.getElementById('btn3d').onclick = () => map.easeTo({pitch:60, bearing:-10});
 </script>
 </body>
 </html>
