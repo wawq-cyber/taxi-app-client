@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Taxi v23 FIREBASE</title>
+<title>Taxi v24 FIREBASE</title>
 <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
 <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet"/>
 <style>
@@ -17,20 +17,19 @@
     .top { position:absolute; top:15px; left:10px; width:320px; z-index:10; transition: opacity 0.3s; }
     .box2 { background:white; padding:10px; border-radius:15px; box-shadow:0 4px 15px rgba(0,0,0,0.1); }
     .input2 { width:100%; padding:10px; border-radius:10px; border:1px solid #eee; margin-bottom:6px; box-sizing: border-box; }
-    .logout-btn { font-size: 11px; color: #999; text-decoration: underline; cursor: pointer; float: right; margin-bottom: 5px; }
     .panel { position:absolute; bottom:20px; left:10px; width:320px; background:white; padding:12px; border-radius:15px; display:none; z-index:20; box-shadow:0 4px 15px rgba(0,0,0,0.1); }
     .row { display:flex; gap:10px; margin-top:10px; }
     .btn2 { flex:1; padding:12px; border:none; border-radius:10px; font-weight:bold; cursor:pointer; }
     .order { background:#f1c40f; }
     .price { background:#e74c3c; color:white; }
 
-    /* ПРАВАЯ ПАНЕЛЬ КНОПОК */
     .map-controls { position:absolute; right:10px; top:100px; z-index:100; display:flex; flex-direction:column; gap:8px; }
     .map-controls button { width:40px; height:40px; background:white; border:none; border-radius:8px; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,0.2); font-weight:bold; font-size:18px; display:flex; align-items:center; justify-content:center; }
 
     .modal { position:fixed; inset:0; background:rgba(0,0,0,0.5); display:none; justify-content:center; align-items:center; z-index:9999; }
     .modal-content { background:white; padding:20px; border-radius:15px; width:300px; }
     .field { width:100%; padding:10px; margin-bottom:10px; border-radius:10px; border:1px solid #ddd; box-sizing: border-box; }
+    
     #driver-status { display:none; position:absolute; top:100px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.85); color:white; padding:15px 25px; border-radius:20px; z-index:1000; text-align:center; box-shadow:0 4px 15px rgba(0,0,0,0.3); width: 80%; max-width: 320px; }
 </style>
 </head>
@@ -55,9 +54,9 @@
 
 <div class="top" id="top-search">
     <div class="box2">
-        <span class="logout-btn" id="logoutBtn">Сменить данные</span>
+        <span onclick="if(confirm('Выйти?')){sessionStorage.clear();location.reload();}" style="font-size:11px; color:#999; text-decoration:underline; cursor:pointer; float:right; margin-bottom:5px;">Сменить данные</span>
         <div style="clear:both;"></div>
-        <input id="from" class="input2" placeholder="Откуда (определение...)" readonly>
+        <input id="from" class="input2" placeholder="Определение места..." readonly>
         <input id="to" class="input2" placeholder="Куда (нажмите на карту)">
     </div>
 </div>
@@ -65,8 +64,8 @@
 <div class="map-controls">
     <button onclick="map.zoomIn()">+</button>
     <button onclick="map.zoomOut()">−</button>
-    <button id="btn2d">2D</button>
-    <button id="btn3d">3D</button>
+    <button onclick="map.easeTo({pitch:0})">2D</button>
+    <button onclick="map.easeTo({pitch:60})">3D</button>
 </div>
 
 <div class="panel" id="panel">
@@ -92,7 +91,7 @@
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-  import { getDatabase, ref, push, set, get, onValue, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+  import { getDatabase, ref, push, set, onValue, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyAf-9-A72oCswBCQIilwuE6FEYt_MN2PbU",
@@ -106,15 +105,15 @@
 
   const app = initializeApp(firebaseConfig);
   const db = getDatabase(app);
-  let currentOrderId = localStorage.getItem('activeOrderId');
-  window.isOrderPending = false;
+  let currentOrderId = null;
+  let orderTimer = null;
 
   window.sendOrderToFirebase = async function() {
       window.isOrderPending = true;
       document.getElementById('panel').style.display = 'none';
       document.getElementById('top-search').style.opacity = '0.5';
       
-      // АВТО-3D и ОТДАЛЕНИЕ ПРИ ЗАКАЗЕ
+      // ЭФФЕКТ ПРИ ЗАКАЗЕ
       window.map.fitBounds([window.clientCoords, window.destCoords], { padding: 100, duration: 2000, pitch: 60 });
 
       const orderData = {
@@ -129,14 +128,29 @@
           createdAt: Date.now()
       };
 
-      if (!currentOrderId) {
-          const newRef = push(ref(db, 'orders'));
-          currentOrderId = newRef.key;
-          localStorage.setItem('activeOrderId', currentOrderId);
-      }
+      const newRef = push(ref(db, 'orders'));
+      currentOrderId = newRef.key;
       await set(ref(db, 'orders/' + currentOrderId), orderData);
-      document.getElementById('driver-status').innerHTML = "Поиск водителя...<br><button onclick='location.reload()' style='background:red; color:white; border:none; padding:5px; border-radius:5px; margin-top:10px;'>Отмена</button>";
+      
+      document.getElementById('driver-status').innerHTML = "Поиск водителя...";
       document.getElementById('driver-status').style.display = 'block';
+
+      // ТАЙМЕР 60 СЕКУНД
+      orderTimer = setTimeout(() => {
+          onValue(ref(db, 'orders/' + currentOrderId), (snap) => {
+              if (snap.val()?.status === 'searching') {
+                  alert("К сожалению, свободных водителей сейчас нет. Попробуйте позже или увеличьте цену.");
+                  location.reload();
+              }
+          }, { onlyOnce: true });
+      }, 60000);
+
+      onValue(ref(db, 'orders/' + currentOrderId), (snap) => {
+          if (snap.val()?.status === 'accepted') {
+              clearTimeout(orderTimer);
+              document.getElementById('driver-status').innerHTML = "<b>Водитель найден!</b><br>Машина выехала.";
+          }
+      });
   };
 </script>
 
@@ -160,7 +174,6 @@ function initApp() {
     destMarker = new maplibregl.Marker({color:'red', draggable:true});
 
     map.on('load', () => {
-        // АВТОГЕОЛОКАЦИЯ
         navigator.geolocation.getCurrentPosition(async p => {
             from = [p.coords.longitude, p.coords.latitude];
             window.clientCoords = from;
@@ -178,8 +191,13 @@ function initApp() {
         build();
     });
 
-    document.getElementById('btn2d').onclick = () => map.easeTo({pitch: 0});
-    document.getElementById('btn3d').onclick = () => map.easeTo({pitch: 60});
+    destMarker.on('dragend', async () => {
+        if(window.isOrderPending) return;
+        to = [destMarker.getLngLat().lng, destMarker.getLngLat().lat];
+        window.destCoords = to;
+        document.getElementById('to').value = await reverse(to);
+        build();
+    });
 }
 
 async function build() {
@@ -191,7 +209,7 @@ async function build() {
 
     document.getElementById('panel').style.display = 'block';
     document.getElementById('outName').innerText = sessionStorage.getItem('userName');
-    document.getElementById('outPhone').innerText = "+48" + sessionStorage.getItem('userPhone');
+    document.getElementById('outPhone').innerText = "+48 " + sessionStorage.getItem('userPhone');
     document.getElementById('km').innerText = km;
     document.getElementById('price').innerText = minPrice;
 
@@ -216,7 +234,6 @@ document.getElementById('priceSlider').oninput = (e) => { document.getElementByI
 
 document.getElementById('submitPrice').onclick = () => {
     let val = parseInt(document.getElementById('priceInput').value);
-    // ПРОВЕРКА: Если ввели меньше рекомендуемой - ставим минимум
     if (isNaN(val) || val < minPrice) val = minPrice;
     document.getElementById('price').innerText = val;
     document.getElementById('modal-price').style.display = 'none';
