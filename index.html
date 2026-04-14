@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Taxi v25 STABLE RECOVERY</title>
+<title>Taxi v26 FINAL RECOVERY</title>
 <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
 <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet"/>
 <style>
@@ -39,7 +39,12 @@
         <input id="name" class="input" placeholder="Имя">
         <div style="display:flex; gap:6px; align-items:center; margin-bottom:10px;">
             <span style="font-weight:bold;">+48</span>
-            <input id="phone" class="input" style="margin-bottom:0;" placeholder="9 цифр" inputmode="numeric">
+            <input id="phone" class="input" style="margin-bottom:0;" 
+                   placeholder="9 цифр" 
+                   type="tel" 
+                   inputmode="numeric" 
+                   pattern="[0-9]*" 
+                   oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 9);">
         </div>
         <div class="error" id="phoneError">Введите корректный номер (9 цифр)</div>
         <button class="btn" id="startBtn">Продолжить</button>
@@ -52,7 +57,7 @@
     <div class="box2">
         <span onclick="localStorage.clear(); sessionStorage.clear(); location.reload();" style="font-size:11px; color:#999; text-decoration:underline; cursor:pointer; float:right;">Выйти</span>
         <div style="clear:both;"></div>
-        <input id="from" class="input2" placeholder="Откуда" readonly>
+        <input id="from" class="input2" placeholder="Откуда (определение...)" readonly>
         <input id="to" class="input2" placeholder="Куда (нажмите на карту)">
     </div>
 </div>
@@ -66,7 +71,7 @@
 
 <div class="panel" id="panel">
     <div>Заказчик: <b id="outName"></b></div>
-    <div>Расстояние: <b id="km"></b> км</div>
+    <div>До цели: <b id="km"></b> км</div>
     <div style="font-size: 20px; margin-top: 5px;">Цена: <b id="price"></b> zł</div>
     <div class="row">
         <button class="btn2 price-btn" id="custom">Своя цена</button>
@@ -126,7 +131,7 @@
       document.getElementById('panel').style.display = 'none';
       document.getElementById('top-search').style.opacity = '0.5';
       document.getElementById('driver-status').style.display = 'block';
-      document.getElementById('driver-status').innerHTML = "Поиск водителя...<br><button onclick='localStorage.removeItem(\"activeOrderId\");location.reload()' style='color:red;background:none;border:none;text-decoration:underline'>Отмена</button>";
+      document.getElementById('driver-status').innerHTML = "Поиск водителя...<br><button onclick='localStorage.removeItem(\"activeOrderId\");location.reload()' style='color:red;background:none;border:none;text-decoration:underline;cursor:pointer;'>Отменить</button>";
 
       onValue(ref(db, 'orders/' + id), (snap) => {
           const order = snap.val();
@@ -135,7 +140,6 @@
           }
       });
       
-      // Таймер 60 секунд
       setTimeout(async () => {
           const s = await get(ref(db, 'orders/' + id));
           if(s.val()?.status === 'searching') {
@@ -152,8 +156,10 @@ let map, from, to, minPrice, destMarker;
 window.map = null;
 
 async function reverse(c){
-    const r=await fetch(`https://api.maptiler.com/geocoding/${c[0]},${c[1]}.json?key=umzJGOnUyr8Edm12MN9b`);
-    const d=await r.json(); return d.features?.[0]?.place_name||'';
+    try {
+        const r=await fetch(`https://api.maptiler.com/geocoding/${c[0]},${c[1]}.json?key=umzJGOnUyr8Edm12MN9b`);
+        const d=await r.json(); return d.features?.[0]?.place_name||'Неизвестно';
+    } catch(e) { return 'Ошибка адреса'; }
 }
 
 function initApp() {
@@ -167,15 +173,12 @@ function initApp() {
     destMarker = new maplibregl.Marker({color:'red', draggable:true});
 
     map.on('load', async () => {
-        // ПРОВЕРКА СОХРАНЕННОГО МАРШРУТА
         const savedFrom = localStorage.getItem('lastFrom');
         const savedTo = localStorage.getItem('lastTo');
 
         if (savedFrom && savedTo) {
-            from = JSON.parse(savedFrom);
-            to = JSON.parse(savedTo);
-            window.clientCoords = from;
-            window.destCoords = to;
+            from = JSON.parse(savedFrom); to = JSON.parse(savedTo);
+            window.clientCoords = from; window.destCoords = to;
             new maplibregl.Marker({color:'blue'}).setLngLat(from).addTo(map);
             document.getElementById('from').value = await reverse(from);
             document.getElementById('to').value = await reverse(to);
@@ -203,9 +206,19 @@ function initApp() {
         document.getElementById('to').value = await reverse(to);
         build();
     });
+
+    destMarker.on('dragend', async () => {
+        if(window.isOrderPending) return;
+        to = [destMarker.getLngLat().lng, destMarker.getLngLat().lat];
+        window.destCoords = to;
+        localStorage.setItem('lastTo', JSON.stringify(to));
+        document.getElementById('to').value = await reverse(to);
+        build();
+    });
 }
 
 async function build() {
+    if (!from || !to) return;
     const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${from[0]},${from[1]};${to[0]},${to[1]}?overview=full&geometries=geojson`);
     const d = await r.json();
     const route = d.routes[0];
@@ -226,17 +239,17 @@ async function build() {
     map.fitBounds([from, to], {padding: 70});
 }
 
-// Кнопки и логика цен
 document.getElementById('custom').onclick = () => {
     document.getElementById('modal-price').style.display = 'flex';
     document.getElementById('priceInput').value = minPrice;
     document.getElementById('priceSlider').min = minPrice;
     document.getElementById('priceSlider').max = minPrice * 5;
+    document.getElementById('priceSlider').value = minPrice;
 };
 document.getElementById('priceSlider').oninput = (e) => { document.getElementById('priceInput').value = e.target.value; };
 document.getElementById('submitPrice').onclick = () => {
     let v = parseInt(document.getElementById('priceInput').value);
-    document.getElementById('price').innerText = (v < minPrice) ? minPrice : v;
+    document.getElementById('price').innerText = (isNaN(v) || v < minPrice) ? minPrice : v;
     document.getElementById('modal-price').style.display = 'none';
 };
 
