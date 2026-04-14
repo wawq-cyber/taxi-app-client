@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Taxi v21</title>
+<title>Taxi Stable v22 FIREBASE</title>
 
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#f1c40f">
@@ -19,36 +19,30 @@
 body { margin:0; font-family:sans-serif; overflow: hidden; touch-action: manipulation; }
 #map { width:100%; height:100vh; }
 
-/* ОКНО ВХОДА */
 .start { position:fixed; inset:0; background:white; display:flex; justify-content:center; align-items:center; z-index:2000; }
 .box { width:300px; }
 .input { width:100%; padding:12px; margin-bottom:10px; border-radius:10px; border:1px solid #ddd; box-sizing: border-box; }
 .btn { width:100%; padding:12px; border:none; border-radius:10px; background:#f1c40f; font-weight:bold; cursor:pointer; }
 .error { color:red; font-size:12px; display:none; margin-top:-5px; margin-bottom:8px; }
 
-/* ПОИСК */
 .top { position:absolute; top:15px; left:10px; width:320px; z-index:10; transition: opacity 0.3s; }
 .box2 { background:white; padding:10px; border-radius:15px; box-shadow:0 4px 15px rgba(0,0,0,0.1); }
 .input2 { width:100%; padding:10px; border-radius:10px; border:1px solid #eee; margin-bottom:6px; box-sizing: border-box; }
 .logout-btn { font-size: 11px; color: #999; text-decoration: underline; cursor: pointer; float: right; margin-bottom: 5px; }
 
-/* ПАНЕЛЬ ЗАКАЗА */
 .panel { position:absolute; bottom:20px; left:10px; width:320px; background:white; padding:12px; border-radius:15px; display:none; z-index:20; box-shadow:0 4px 15px rgba(0,0,0,0.1); }
 .row { display:flex; gap:10px; margin-top:10px; }
 .btn2 { flex:1; padding:12px; border:none; border-radius:10px; font-weight:bold; cursor:pointer; }
 .order { background:#f1c40f; }
 .price { background:#e74c3c; color:white; }
 
-/* КНОПКИ 2D/3D */
 .ctrl { position:absolute; right:10px; top:120px; z-index:10; display:flex; flex-direction:column; gap:8px; }
 .ctrl button { background:white; border:none; padding:10px; border-radius:8px; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,0.2); font-weight:bold; }
 
-/* МОДАЛКА ЦЕНЫ */
 .modal { position:fixed; inset:0; background:rgba(0,0,0,0.5); display:none; justify-content:center; align-items:center; z-index:9999; }
 .modal-content { background:white; padding:20px; border-radius:15px; width:300px; }
 .field { width:100%; padding:10px; margin-bottom:10px; border-radius:10px; border:1px solid #ddd; box-sizing: border-box; }
 
-/* СТАТУС */
 #driver-status { display:none; position:absolute; top:100px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.85); color:white; padding:15px 25px; border-radius:20px; z-index:1000; text-align:center; box-shadow:0 4px 15px rgba(0,0,0,0.3); width: 80%; max-width: 320px; }
 .loader { border: 3px solid #f3f3f3; border-top: 3px solid #f1c40f; border-radius: 50%; width: 18px; height: 18px; animation: spin 1s linear infinite; display: inline-block; vertical-align: middle; margin-right: 8px; }
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -103,8 +97,8 @@ body { margin:0; font-family:sans-serif; overflow: hidden; touch-action: manipul
 <div class="modal" id="modal-price">
     <div class="modal-content">
         <h3>Ваша цена</h3>
-        <div style="margin-bottom:10px;">Минимум: <b id="modalMinPrice"></b> zł</div>
-        <input id="priceInput" class="field" type="number">
+        <div style="margin-bottom:10px;">Рекомендуемая: <b id="modalMinPrice"></b> zł</div>
+        <input id="priceInput" class="field" type="number" placeholder="Введите сумму">
         <input id="priceSlider" class="field" type="range" step="1">
         <button id="submitPrice" class="btn2 order">Установить</button>
         <button onclick="document.getElementById('modal-price').style.display='none'" class="btn2" style="background:#eee; margin-top:5px;">Отмена</button>
@@ -148,6 +142,7 @@ body { margin:0; font-family:sans-serif; overflow: hidden; touch-action: manipul
       document.getElementById('panel').style.display = 'block';
       document.getElementById('top-search').style.opacity = '1';
       document.getElementById('top-search').style.pointerEvents = 'auto';
+      if(window.map) window.map.easeTo({pitch: 0});
   };
 
   window.sendOrderToFirebase = async function() {
@@ -156,6 +151,16 @@ body { margin:0; font-family:sans-serif; overflow: hidden; touch-action: manipul
       document.getElementById('top-search').style.opacity = '0.5';
       document.getElementById('top-search').style.pointerEvents = 'none';
       window.showStatus(`<div class="loader"></div> Поиск водителя...`, true);
+
+      // Анимация камеры при заказе: уменьшение + 3D
+      if(window.map && window.clientCoords && window.destCoords) {
+          window.map.fitBounds([window.clientCoords, window.destCoords], {
+              padding: 100,
+              duration: 2000,
+              pitch: 60,
+              bearing: -10
+          });
+      }
 
       const orderData = {
           clientName: sessionStorage.getItem('userName'),
@@ -214,6 +219,9 @@ function initApp() {
         style: 'https://api.maptiler.com/maps/streets-v4/style.json?key=umzJGOnUyr8Edm12MN9b',
         center: [21.01, 52.23], zoom: 12
     });
+
+    // Добавляем кнопки управления масштабом (+/-)
+    map.addControl(new maplibregl.NavigationControl({showCompass: false}), 'right-bottom');
 
     userMarker = new maplibregl.Marker({color:'blue'}).setLngLat([21.01, 52.23]).addTo(map);
     destMarker = new maplibregl.Marker({color:'red', draggable:true});
@@ -285,20 +293,22 @@ document.getElementById('custom').onclick = () => {
     document.getElementById('modalMinPrice').innerText = minPrice;
     document.getElementById('priceInput').value = minPrice;
     document.getElementById('priceSlider').min = minPrice;
-    document.getElementById('priceSlider').max = minPrice * 3;
+    document.getElementById('priceSlider').max = minPrice * 5; // Увеличение до x5
     document.getElementById('priceSlider').value = minPrice;
 };
 
-// Синхронизация слайдера и инпута
 document.getElementById('priceSlider').oninput = (e) => {
     document.getElementById('priceInput').value = e.target.value;
 };
-document.getElementById('priceInput').oninput = (e) => {
-    document.getElementById('priceSlider').value = e.target.value;
-};
 
 document.getElementById('submitPrice').onclick = () => {
-    const val = document.getElementById('priceInput').value;
+    let val = parseInt(document.getElementById('priceInput').value);
+    
+    // Если введено меньше рекомендуемой или пусто - сброс к минимуму
+    if (isNaN(val) || val < minPrice) {
+        val = minPrice;
+    }
+    
     document.getElementById('price').innerText = val;
     document.getElementById('modal-price').style.display = 'none';
 };
