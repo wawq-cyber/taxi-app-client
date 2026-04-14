@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Taxi</title>
+<title>Taxi Stable v19 FIREBASE</title>
 
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#f1c40f">
@@ -16,50 +16,30 @@
 <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet"/>
 
 <style>
-body { margin:0; font-family:sans-serif; overflow: hidden; }
+body { margin:0; font-family:sans-serif; overflow: hidden; touch-action: manipulation; }
 #map { width:100%; height:100vh; }
 
-/* START SCREEN */
-.start {
-    position:fixed; inset:0;
-    background:white;
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    z-index:2000; /* Самый верхний слой */
-}
+.start { position:fixed; inset:0; background:white; display:flex; justify-content:center; align-items:center; z-index:2000; }
 .box { width:300px; }
 .input { width:100%; padding:12px; margin-bottom:10px; border-radius:10px; border:1px solid #ddd; box-sizing: border-box; }
 .btn { width:100%; padding:12px; border:none; border-radius:10px; background:#f1c40f; font-weight:bold; cursor:pointer; }
-
-/* ERROR MESSAGE */
 .error { color:red; font-size:12px; display:none; margin-top:-5px; margin-bottom:8px; }
 
-/* SEARCH BAR */
 .top { position:absolute; top:15px; left:10px; width:320px; z-index:10; transition: opacity 0.3s; }
 .box2 { background:white; padding:10px; border-radius:15px; box-shadow:0 4px 15px rgba(0,0,0,0.1); }
 .input2 { width:100%; padding:10px; border-radius:10px; border:1px solid #eee; margin-bottom:6px; box-sizing: border-box; }
-
 .logout-btn { font-size: 11px; color: #999; text-decoration: underline; cursor: pointer; float: right; margin-bottom: 5px; }
 
-/* PANEL */
 .panel { position:absolute; bottom:20px; left:10px; width:320px; background:white; padding:12px; border-radius:15px; display:none; z-index:20; box-shadow:0 4px 15px rgba(0,0,0,0.1); }
 .row { display:flex; gap:10px; margin-top:10px; }
 .btn2 { flex:1; padding:12px; border:none; border-radius:10px; font-weight:bold; cursor:pointer; }
 .order { background:#f1c40f; }
 .price { background:#e74c3c; color:white; }
 
-/* MODALS */
-.modal { position:fixed; inset:0; background:rgba(0,0,0,0.5); display:none; justify-content:center; align-items:center; z-index:9999; }
-.modal-content { background:white; padding:20px; border-radius:15px; width:300px; }
-.field { width:100%; padding:10px; margin-bottom:10px; border-radius:10px; border:1px solid #ddd; box-sizing: border-box; }
-
-/* HUD */
 #driver-status { display:none; position:absolute; top:100px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.85); color:white; padding:15px 25px; border-radius:20px; z-index:1000; text-align:center; box-shadow:0 4px 15px rgba(0,0,0,0.3); width: 80%; max-width: 320px; }
-
 .loader { border: 3px solid #f3f3f3; border-top: 3px solid #f1c40f; border-radius: 50%; width: 18px; height: 18px; animation: spin 1s linear infinite; display: inline-block; vertical-align: middle; margin-right: 8px; }
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-.btn-cancel { background: #e74c3c; color: white; margin-top: 10px; width: 100%; }
+.btn-cancel { background: #e74c3c; color: white; margin-top: 10px; width: 100%; font-size: 14px; }
 </style>
 </head>
 
@@ -86,29 +66,19 @@ body { margin:0; font-family:sans-serif; overflow: hidden; }
     <div class="box2">
         <span class="logout-btn" id="logoutBtn">Сменить данные</span>
         <div style="clear:both;"></div>
-        <input id="from" class="input2" placeholder="Откуда">
-        <input id="to" class="input2" placeholder="Куда">
-        <div id="suggest" style="background:white; max-height:150px; overflow:auto;"></div>
+        <input id="from" class="input2" placeholder="Откуда (текущее место)" readonly>
+        <input id="to" class="input2" placeholder="Куда (нажмите на карту)">
     </div>
 </div>
 
 <div class="panel" id="panel">
     <div>Заказчик: <b id="outName"></b> (<span id="outPhone"></span>)</div>
     <hr>
-    <div>Расстояние: <b id="km"></b> км</div>
-    <div>Время: <b id="min"></b> мин</div>
+    <div>Расстояние: <b id="km"></b> км (~<b id="min"></b> мин)</div>
     <div style="font-size: 20px; margin-top: 5px;">Цена: <b id="price"></b> zł</div>
     <div class="row">
         <button class="btn2 price" id="custom">Своя цена</button>
         <button class="btn2 order" id="orderBtn">Заказать</button>
-    </div>
-</div>
-
-<div class="modal" id="modal-price">
-    <div class="modal-content">
-        <h3>Ваша цена</h3>
-        <input id="priceInput" class="field" type="number">
-        <button id="submitPrice" class="btn2 order">Установить</button>
     </div>
 </div>
 
@@ -131,16 +101,12 @@ body { margin:0; font-family:sans-serif; overflow: hidden; }
 
   let currentOrderId = localStorage.getItem('activeOrderId');
   window.isOrderPending = false;
-  let rejectedDrivers = [];
 
-  function showStatus(text, showCancel = false) {
+  window.showStatus = function(text, showCancel = false) {
       const el = document.getElementById('driver-status');
       if (!text) { el.style.display = 'none'; return; }
-      
       el.innerHTML = text;
-      if (showCancel) {
-          el.innerHTML += `<br><button class="btn btn-cancel" onclick="window.resetOrderUI()">Отменить заказ</button>`;
-      }
+      if (showCancel) el.innerHTML += `<br><button class="btn btn-cancel" onclick="window.resetOrderUI()">Отменить поиск</button>`;
       el.style.display = 'block';
   }
 
@@ -149,50 +115,29 @@ body { margin:0; font-family:sans-serif; overflow: hidden; }
       localStorage.removeItem('activeOrderId');
       currentOrderId = null;
       window.isOrderPending = false;
-      showStatus("");
+      window.showStatus("");
       document.getElementById('panel').style.display = 'block';
-      document.getElementById('top-search').style.pointerEvents = 'auto';
       document.getElementById('top-search').style.opacity = '1';
-  };
-
-  window.trackDriver = function(driverId) {
-      onValue(ref(db, `drivers/${driverId}/coords`), (snap) => {
-          const coords = snap.val();
-          if (!coords || !window.map) return;
-          if (!window.driverMarker) {
-              const el = document.createElement('div'); el.innerText = '🚕'; el.style.fontSize = '32px';
-              window.driverMarker = new maplibregl.Marker(el).setLngLat(coords).addTo(window.map);
-          } else { window.driverMarker.setLngLat(coords); }
-      });
+      document.getElementById('top-search').style.pointerEvents = 'auto';
   };
 
   window.sendOrderToFirebase = async function() {
-      const name = sessionStorage.getItem('userName');
-      const phoneVal = sessionStorage.getItem('userPhone');
-      
       window.isOrderPending = true;
       document.getElementById('panel').style.display = 'none';
       document.getElementById('top-search').style.opacity = '0.5';
       document.getElementById('top-search').style.pointerEvents = 'none';
-      showStatus(`<div class="loader"></div> Поиск водителя...`, true);
-
-      const driversSnap = await get(ref(db, 'drivers'));
-      const drivers = driversSnap.val();
-      
-      let nearest = Object.keys(drivers || {})
-          .map(id => ({id, ...drivers[id]}))
-          .filter(d => d.status === 'online' && !rejectedDrivers.includes(d.id))
-          .sort((a,b) => 0.5 - Math.random())[0]; // Для теста берем любого онлайн
-
-      if (!nearest) { alert("Нет свободных водителей"); window.resetOrderUI(); return; }
+      window.showStatus(`<div class="loader"></div> Поиск водителя...`, true);
 
       const orderData = {
-          clientName: name, clientPhone: "+48" + phoneVal,
+          clientName: sessionStorage.getItem('userName'),
+          clientPhone: "+48" + sessionStorage.getItem('userPhone'),
           fromAddress: document.getElementById('from').value,
           toAddress: document.getElementById('to').value,
-          clientCoords: window.clientCoords, destCoords: window.destCoords,
+          clientCoords: window.clientCoords,
+          destCoords: window.destCoords,
           price: document.getElementById('price').innerText,
-          status: "searching", assignedDriverId: nearest.id
+          status: "searching",
+          createdAt: Date.now()
       };
 
       if (!currentOrderId) {
@@ -200,20 +145,16 @@ body { margin:0; font-family:sans-serif; overflow: hidden; }
           currentOrderId = newOrderRef.key;
           localStorage.setItem('activeOrderId', currentOrderId);
       }
-      
       await set(ref(db, 'orders/' + currentOrderId), orderData);
 
       onValue(ref(db, 'orders/' + currentOrderId), (snap) => {
           const order = snap.val();
-          if (!order) return;
-          if (order.status === 'accepted') {
-              showStatus(`<b>Водитель в пути!</b>`);
-              window.trackDriver(order.assignedDriverId);
+          if (order?.status === 'accepted') {
+              window.showStatus(`<b>Водитель принял заказ!</b><br>Машина выехала.`);
           }
       });
   };
 
-  // Проверка активного заказа при загрузке
   window.checkActiveOrder = async function() {
       if (!currentOrderId) return;
       const snap = await get(ref(db, `orders/${currentOrderId}`));
@@ -222,84 +163,62 @@ body { margin:0; font-family:sans-serif; overflow: hidden; }
           window.isOrderPending = true;
           document.getElementById('top-search').style.opacity = '0.5';
           document.getElementById('top-search').style.pointerEvents = 'none';
-          
-          if (window.restoreRoute) {
-              window.restoreRoute(order.clientCoords, order.destCoords, order.fromAddress, order.toAddress);
-          }
-
-          if (order.status === 'searching') showStatus(`<div class="loader"></div> Поиск водителя...`, true);
-          else {
-              showStatus(`<b>Водитель в пути!</b>`);
-              window.trackDriver(order.assignedDriverId);
-          }
-      } else {
-          localStorage.removeItem('activeOrderId');
-      }
+          if (window.restoreRoute) window.restoreRoute(order.clientCoords, order.destCoords, order.fromAddress, order.toAddress);
+          if (order.status === 'searching') window.showStatus(`<div class="loader"></div> Поиск водителя...`, true);
+          else window.showStatus(`<b>Водитель принял заказ!</b>`);
+      } else { localStorage.removeItem('activeOrderId'); }
   };
 </script>
 
 <script>
-let map, from, to, minPrice, destMarker;
+let map, from, to, minPrice, destMarker, userMarker;
 
-// Инициализация при входе
+async function reverse(c){
+    const r=await fetch(`https://api.maptiler.com/geocoding/${c[0]},${c[1]}.json?key=umzJGOnUyr8Edm12MN9b`);
+    const d=await r.json(); return d.features?.[0]?.place_name||'';
+}
+
 function initApp() {
     document.getElementById('start').style.display = 'none';
     map = new maplibregl.Map({
         container: 'map',
         style: 'https://api.maptiler.com/maps/streets-v4/style.json?key=umzJGOnUyr8Edm12MN9b',
-        center: [21.01, 52.23], zoom: 13
+        center: [21.01, 52.23], zoom: 12
     });
 
+    userMarker = new maplibregl.Marker({color:'blue'}).setLngLat([21.01, 52.23]).addTo(map);
     destMarker = new maplibregl.Marker({color:'red', draggable:true});
 
     map.on('load', () => {
+        // Летим к пользователю сразу при запуске
+        navigator.geolocation.getCurrentPosition(async p => {
+            from = [p.coords.longitude, p.coords.latitude];
+            userMarker.setLngLat(from);
+            // ВОТ ОНА, ФЛАЙТУ!
+            map.flyTo({center: from, zoom: 15, duration: 2000});
+            document.getElementById('from').value = await reverse(from);
+        });
+
         if(window.checkActiveOrder) window.checkActiveOrder();
     });
 
     map.on('click', async e => {
         if(window.isOrderPending) return;
         to = [e.lngLat.lng, e.lngLat.lat];
-        document.getElementById('to').value = "Загрузка...";
+        document.getElementById('to').value = await reverse(to);
+        build();
+    });
+
+    destMarker.on('dragend', async () => {
+        if(window.isOrderPending) return;
+        to = [destMarker.getLngLat().lng, destMarker.getLngLat().lat];
+        document.getElementById('to').value = await reverse(to);
         build();
     });
 }
 
-// ЛОГИКА ВХОДА И ПРОВЕРКА SESSION
-const startBtn = document.getElementById('startBtn');
-const nameInput = document.getElementById('name');
-const phoneInput = document.getElementById('phone');
-const phoneError = document.getElementById('phoneError');
-
-startBtn.onclick = () => {
-    if (nameInput.value.length < 2) { alert("Введите имя"); return; }
-    if (phoneInput.value.length !== 9) { 
-        phoneError.style.display = 'block'; 
-        return; 
-    }
-    phoneError.style.display = 'none';
-    sessionStorage.setItem('userName', nameInput.value);
-    sessionStorage.setItem('userPhone', phoneInput.value);
-    initApp();
-};
-
-// Проверка при обновлении (F5)
-if (sessionStorage.getItem('userName')) {
-    initApp();
-}
-
-document.getElementById('logoutBtn').onclick = () => {
-    if(confirm("Выйти и сбросить данные?")) {
-        sessionStorage.clear();
-        localStorage.removeItem('activeOrderId');
-        location.reload();
-    }
-};
-
 async function build() {
-    if (!from || !to) {
-        // Если 'from' еще нет (геолокация тормозит), берем центр карты
-        from = [map.getCenter().lng, map.getCenter().lat];
-    }
+    if (!from || !to) return;
     const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${from[0]},${from[1]};${to[0]},${to[1]}?overview=full&geometries=geojson`);
     const d = await r.json();
     const route = d.routes[0];
@@ -307,13 +226,10 @@ async function build() {
     const km = (route.distance/1000).toFixed(1);
     minPrice = Math.round(km * 2.5 + 10);
 
-    // ВАЖНО: Если заказ уже идет, НЕ показываем панель кнопок
-    if (!window.isOrderPending) {
-        document.getElementById('panel').style.display = 'block';
-    }
+    if (!window.isOrderPending) document.getElementById('panel').style.display = 'block';
 
     document.getElementById('outName').innerText = sessionStorage.getItem('userName');
-    document.getElementById('outPhone').innerText = "+48" + sessionStorage.getItem('userPhone');
+    document.getElementById('outPhone').innerText = "+48 " + sessionStorage.getItem('userPhone');
     document.getElementById('km').innerText = km;
     document.getElementById('min').innerText = Math.round(route.duration/60);
     document.getElementById('price').innerText = minPrice;
@@ -324,6 +240,9 @@ async function build() {
         map.addLayer({id:'route', type:'line', source:'route', paint:{'line-color':'#f1c40f', 'line-width':5}});
     }
     destMarker.setLngLat(to).addTo(map);
+    
+    // Плавный охват всего маршрута
+    map.fitBounds([from, to], {padding: 80, duration: 1500});
 }
 
 window.restoreRoute = (sf, st, fa, ta) => {
@@ -333,18 +252,32 @@ window.restoreRoute = (sf, st, fa, ta) => {
     build();
 };
 
+document.getElementById('startBtn').onclick = () => {
+    const n = document.getElementById('name').value;
+    const p = document.getElementById('phone').value;
+    if (n.length < 2 || p.length !== 9) {
+        document.getElementById('phoneError').style.display = 'block';
+        return;
+    }
+    sessionStorage.setItem('userName', n);
+    sessionStorage.setItem('userPhone', p);
+    initApp();
+};
+
+if (sessionStorage.getItem('userName')) initApp();
+
+document.getElementById('logoutBtn').onclick = () => {
+    if(confirm("Выйти?")) {
+        sessionStorage.clear();
+        localStorage.removeItem('activeOrderId');
+        location.reload();
+    }
+};
+
 document.getElementById('orderBtn').onclick = () => window.sendOrderToFirebase();
 
-// Геолокация
-navigator.geolocation.getCurrentPosition(p => {
-    from = [p.coords.longitude, p.coords.latitude];
-});
-
-// Передаем данные в модуль Firebase
 setInterval(() => {
-    window.map = map;
-    window.clientCoords = from;
-    window.destCoords = to;
+    window.map = map; window.clientCoords = from; window.destCoords = to;
 }, 500);
 </script>
 </body>
