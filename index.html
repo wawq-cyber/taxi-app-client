@@ -3,14 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Taxi Stable v15 FIREBASE</title>
-
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#f1c40f">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Taxi App">
-<link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/71/71222.png">
+<title>Taxi Stable FULL FIXED v15</title>
 
 <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
 <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet"/>
@@ -19,34 +12,161 @@
 body { margin:0; font-family:sans-serif; }
 #map { width:100%; height:100vh; }
 
-/* ДОБАВЛЕНО */
-.map-small { height:80vh !important; }
+.start {
+position:fixed; inset:0;
+background:white;
+display:flex;
+justify-content:center;
+align-items:center;
+z-index:1000;
+}
 
-/* остальной твой CSS без изменений */
+.box { width:300px; }
+
+.input {
+width:100%;
+padding:12px;
+margin-bottom:10px;
+border-radius:10px;
+border:1px solid #ddd;
+}
+
+.btn {
+width:100%;
+padding:12px;
+border:none;
+border-radius:10px;
+background:#f1c40f;
+font-weight:bold;
+}
+
+.panel {
+position:absolute;
+bottom:20px;
+left:10px;
+width:320px;
+background:white;
+padding:12px;
+border-radius:15px;
+display:none;
+z-index:20;
+}
+
+.row { display:flex; gap:10px; margin-top:10px; }
+
+.btn2 {
+flex:1;
+padding:12px;
+border:none;
+border-radius:10px;
+font-weight:bold;
+cursor:pointer;
+}
+
+.order { background:#f1c40f; }
+.price { background:#e74c3c; color:white; }
+
+.top {
+position:absolute;
+top:15px;
+left:10px;
+width:320px;
+z-index:10;
+}
+
+.box2 {
+background:white;
+padding:10px;
+border-radius:15px;
+}
+
+.input2 {
+width:100%;
+padding:10px;
+margin-bottom:6px;
+border-radius:10px;
+}
+
+.suggest {
+background:white;
+max-height:180px;
+overflow:auto;
+border-radius:10px;
+}
+
+.item { padding:10px; cursor:pointer; border-bottom:1px solid #eee; }
+
+.ctrl {
+position:absolute;
+right:10px;
+top:120px;
+z-index:10;
+display:flex;
+flex-direction:column;
+gap:8px;
+}
+
+.ctrl button {
+background:white;
+border:none;
+padding:10px;
+border-radius:8px;
+}
+
+#driver-status {
+position:absolute;
+top:80px;
+left:50%;
+transform:translateX(-50%);
+background:rgba(0,0,0,0.8);
+color:white;
+padding:12px;
+border-radius:12px;
+z-index:1000;
+display:none;
+}
 </style>
 </head>
 
 <body>
 
-<div id="driver-status" style="display:none;"></div>
+<div id="driver-status"></div>
 
 <div class="start" id="start">
-    <div class="box">
-        <h3>Данные</h3>
-        <input id="name" class="input" placeholder="Имя">
-        <div style="display:flex; gap:6px; align-items:center;">
-            <span style="font-weight:bold;">+48</span>
-            <input id="phone" class="input" placeholder="9 цифр" inputmode="numeric">
-        </div>
-        <div class="error" id="phoneError">Неверный номер</div>
-        <button class="btn" id="startBtn">Начать</button>
+  <div class="box">
+    <input id="name" class="input" placeholder="Имя">
+    <div style="display:flex; gap:6px;">
+      <span>+48</span>
+      <input id="phone" class="input" placeholder="9 цифр">
     </div>
+    <button class="btn" id="startBtn">Начать</button>
+  </div>
 </div>
 
 <div id="map"></div>
 
-<!-- ДОБАВЛЕНО -->
-<div id="finalPriceText" style="position:absolute; bottom:100px; left:10px; background:white; padding:10px; border-radius:10px; z-index:50;"></div>
+<div class="top" id="top">
+  <div class="box2">
+    <input id="from" class="input2" placeholder="Откуда">
+    <input id="to" class="input2" placeholder="Куда">
+    <div class="suggest" id="suggest"></div>
+  </div>
+</div>
+
+<div class="panel" id="panel">
+  <div>Км: <b id="km"></b></div>
+  <div>Мин: <b id="min"></b></div>
+  <div>Цена: <b id="price"></b> zł</div>
+  <div class="row">
+    <button class="btn2 price" id="custom">Цена</button>
+    <button class="btn2 order" id="orderBtn">Заказать</button>
+  </div>
+</div>
+
+<div class="ctrl">
+  <button id="btn2d">2D</button>
+  <button id="btn3d">3D</button>
+</div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
@@ -54,125 +174,164 @@ import { getDatabase, ref, push, set, get, onValue, remove } from "https://www.g
 
 const app = initializeApp({
   apiKey: "AIza...",
+  databaseURL: "https://YOUR_DB.firebaseio.com"
 });
+
 const db = getDatabase(app);
 
-let currentOrderId = null;
-
-/* === ДОБАВЛЕНО: восстановление === */
-window.restoreOrder = async function() {
-    try {
-        const phoneVal = document.getElementById('phone').value;
-        if (!phoneVal) return;
-
-        const snap = await get(ref(db, 'orders'));
-        const orders = snap.val();
-        if (!orders) return;
-
-        const active = Object.entries(orders).find(([id, o]) =>
-            o.clientPhone === "+48" + phoneVal &&
-            (o.status === 'searching' || o.status === 'accepted')
-        );
-
-        if (!active) return;
-
-        const [id, order] = active;
-        currentOrderId = id;
-
-        document.getElementById('price').innerText = order.price;
-        window.customPrice = order.price;
-
-        document.getElementById('finalPriceText').innerText =
-            "Стоимость поездки составляет: " + order.price + " zł";
-
-        window.clientCoords = order.clientCoords;
-
-        if (order.clientCoords && order.toAddress) {
-            from = order.clientCoords;
-
-            const res = await fetch(`https://api.maptiler.com/geocoding/${encodeURIComponent(order.toAddress)}.json?key=umzJGOnUyr8Edm12MN9b`);
-            const data = await res.json();
-
-            if (data.features && data.features[0]) {
-                to = data.features[0].center;
-
-                setTimeout(() => {
-                    if (window.map) build();
-                }, 1000);
-            }
-        }
-
-    } catch(e) {
-        console.log(e);
-    }
-};
-</script>
-
-<script>
 let map;
-let from=null;
-let to=null;
-let minPrice=0;
-let customPrice=0;
+let from, to;
+let minPrice = 0;
+let customPrice = 0;
+let currentOrderId = null;
+let rejected = [];
+window.isOrderPending = false;
 
-/* === ДОБАВЛЕНО: защита цены === */
-const priceInputEl = document.getElementById('priceInput');
-if (priceInputEl) {
+/* ===== MAP INIT ===== */
+document.getElementById('startBtn').onclick = () => {
+  document.getElementById('start').style.display = 'none';
 
-    priceInputEl.addEventListener('keydown', (e) => {
-        if (e.key === 'ArrowDown' && Number(e.target.value) <= minPrice) {
-            e.preventDefault();
-        }
-    });
+  map = new maplibregl.Map({
+    container: 'map',
+    style: 'https://api.maptiler.com/maps/streets-v4/style.json?key=KEY',
+    center: [21,52],
+    zoom: 12,
+    pitch: 45
+  });
 
-    priceInputEl.addEventListener('blur', (e) => {
-        if (!e.target.value || Number(e.target.value) < minPrice) {
-            customPrice = minPrice;
-            e.target.value = minPrice;
-        }
-    });
-}
+  map.addControl(new maplibregl.NavigationControl());
 
-/* === ДОБАВЛЕНО: сохранение цены === */
-const savedPrice = localStorage.getItem('lastPrice');
-if (savedPrice) {
-    customPrice = Number(savedPrice);
-}
+  navigator.geolocation.getCurrentPosition(p => {
+    from = [p.coords.longitude, p.coords.latitude];
+    map.flyTo({center: from, zoom: 15});
+  });
 
-/* === ДОБАВЛЕНО: старт === */
-document.getElementById('startBtn').onclick=()=>{
-    setTimeout(()=>window.restoreOrder(),800);
+  map.on('click', e => {
+    if(window.isOrderPending) return;
+    to = [e.lngLat.lng, e.lngLat.lat];
+    build();
+  });
 };
 
-/* === ДОБАВЛЕНО: удаление заказа === */
-document.getElementById('timeout-cancel')?.addEventListener('click',()=>{
-    if(currentOrderId){
-        remove(ref(db,`orders/${currentOrderId}`));
-        currentOrderId=null;
-    }
-});
+/* ===== ROUTE ===== */
+async function build() {
+  if(!from || !to) return;
 
-/* === ДОБАВЛЕНО: 3D карта === */
-const oldSend = window.sendOrderToFirebase;
-if(oldSend){
-window.sendOrderToFirebase = async function(){
-    await oldSend();
+  const r = await fetch(
+    `https://router.project-osrm.org/route/v1/driving/${from[0]},${from[1]};${to[0]},${to[1]}?overview=full&geometries=geojson`
+  );
 
-    document.getElementById('map').classList.add('map-small');
+  const d = await r.json();
+  const route = d.routes[0];
 
-    document.getElementById('finalPriceText').innerText =
-        "Стоимость поездки составляет: " + (window.customPrice || window.minPrice) + " zł";
+  const km = route.distance / 1000;
+  const min = route.duration / 60;
 
-    localStorage.setItem('lastPrice', window.customPrice || window.minPrice);
+  minPrice = Math.round(km * 2.5 + 10);
+  customPrice = minPrice;
 
-    if (window.map && from && to) {
-        setTimeout(()=>{
-            map.fitBounds([from,to],{padding:120});
-            map.easeTo({pitch:60,bearing:-20});
-        },300);
-    }
-};
+  document.getElementById('panel').style.display = 'block';
+  document.getElementById('km').innerText = km.toFixed(1);
+  document.getElementById('min').innerText = Math.round(min);
+  document.getElementById('price').innerText = minPrice;
+
+  if(map.getSource('route')) {
+    map.getSource('route').setData(route.geometry);
+  } else {
+    map.addSource('route', {type:'geojson', data: route.geometry});
+    map.addLayer({
+      id:'route',
+      type:'line',
+      source:'route',
+      paint:{'line-color':'#f1c40f','line-width':5}
+    });
+  }
+
+  map.fitBounds([from, to], {padding:80});
 }
+
+/* ===== FIREBASE ORDER ===== */
+window.sendOrderToFirebase = async function() {
+
+  window.isOrderPending = true;
+
+  const driversSnap = await get(ref(db,'drivers'));
+  const drivers = driversSnap.val();
+
+  if(!drivers) return;
+
+  const nearest = Object.entries(drivers)
+    .map(([id,d]) => ({id,...d}))
+    .filter(d => d.status === 'online' && !rejected.includes(d.id))
+    .map(d => ({...d, dist: getDist(from,d.coords)}))
+    .sort((a,b)=>a.dist-b.dist)[0];
+
+  if(!nearest) return;
+
+  const orderRef = push(ref(db,'orders'));
+  currentOrderId = orderRef.key;
+
+  const order = {
+    clientName: document.getElementById('name').value,
+    clientPhone: "+48"+document.getElementById('phone').value,
+    from,
+    to,
+    price: customPrice,
+    status:"searching",
+    assignedDriverId: nearest.id,
+    createdAt: Date.now()
+  };
+
+  await set(ref(db,'orders/'+currentOrderId), order);
+
+  onValue(ref(db,'orders/'+currentOrderId), snap => {
+    const o = snap.val();
+    if(!o) return;
+
+    if(o.status === "rejected") {
+      rejected.push(o.assignedDriverId);
+      sendOrderToFirebase();
+    }
+
+    if(o.status === "accepted") {
+      showDriver(o.assignedDriverId);
+    }
+  });
+};
+
+/* ===== DRIVER TRACK ===== */
+function showDriver(id) {
+  onValue(ref(db,'drivers/'+id+'/coords'), snap => {
+    const c = snap.val();
+    if(!c) return;
+
+    if(!window.driverMarker) {
+      const el = document.createElement('div');
+      el.innerHTML = "🚕";
+      el.style.fontSize = "30px";
+      window.driverMarker = new maplibregl.Marker(el).setLngLat(c).addTo(map);
+    } else {
+      window.driverMarker.setLngLat(c);
+    }
+  });
+}
+
+/* ===== DIST ===== */
+function getDist(a,b){
+  const R=6371;
+  const dLat=(b[1]-a[1])*Math.PI/180;
+  const dLon=(b[0]-a[0])*Math.PI/180;
+  return R*2*Math.atan2(
+    Math.sqrt(Math.sin(dLat/2)**2 + Math.cos(a[1]*Math.PI/180)*Math.cos(b[1]*Math.PI/180)*Math.sin(dLon/2)**2),
+    Math.sqrt(1-0)
+  );
+}
+
+/* ===== BUTTONS ===== */
+document.getElementById('orderBtn').onclick = () => sendOrderToFirebase();
+document.getElementById('btn2d').onclick = () => map.easeTo({pitch:0});
+document.getElementById('btn3d').onclick = () => map.easeTo({pitch:60,bearing:-20});
+
 </script>
 
 </body>
