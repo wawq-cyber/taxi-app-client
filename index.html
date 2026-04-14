@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Taxi</title>
+<title>Taxi Stable v21 FIREBASE</title>
 
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#f1c40f">
@@ -42,6 +42,11 @@ body { margin:0; font-family:sans-serif; overflow: hidden; touch-action: manipul
 /* КНОПКИ 2D/3D */
 .ctrl { position:absolute; right:10px; top:120px; z-index:10; display:flex; flex-direction:column; gap:8px; }
 .ctrl button { background:white; border:none; padding:10px; border-radius:8px; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,0.2); font-weight:bold; }
+
+/* МОДАЛКА ЦЕНЫ */
+.modal { position:fixed; inset:0; background:rgba(0,0,0,0.5); display:none; justify-content:center; align-items:center; z-index:9999; }
+.modal-content { background:white; padding:20px; border-radius:15px; width:300px; }
+.field { width:100%; padding:10px; margin-bottom:10px; border-radius:10px; border:1px solid #ddd; box-sizing: border-box; }
 
 /* СТАТУС */
 #driver-status { display:none; position:absolute; top:100px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.85); color:white; padding:15px 25px; border-radius:20px; z-index:1000; text-align:center; box-shadow:0 4px 15px rgba(0,0,0,0.3); width: 80%; max-width: 320px; }
@@ -92,6 +97,17 @@ body { margin:0; font-family:sans-serif; overflow: hidden; touch-action: manipul
     <div class="row">
         <button class="btn2 price" id="custom">Своя цена</button>
         <button class="btn2 order" id="orderBtn">Заказать</button>
+    </div>
+</div>
+
+<div class="modal" id="modal-price">
+    <div class="modal-content">
+        <h3>Ваша цена</h3>
+        <div style="margin-bottom:10px;">Минимум: <b id="modalMinPrice"></b> zł</div>
+        <input id="priceInput" class="field" type="number">
+        <input id="priceSlider" class="field" type="range" step="1">
+        <button id="submitPrice" class="btn2 order">Установить</button>
+        <button onclick="document.getElementById('modal-price').style.display='none'" class="btn2" style="background:#eee; margin-top:5px;">Отмена</button>
     </div>
 </div>
 
@@ -209,7 +225,6 @@ function initApp() {
             map.flyTo({center: from, zoom: 15, duration: 2000});
             document.getElementById('from').value = await reverse(from);
         });
-
         if(window.checkActiveOrder) window.checkActiveOrder();
     });
 
@@ -227,7 +242,6 @@ function initApp() {
         build();
     });
 
-    // ОБРАБОТЧИКИ 2D/3D
     document.getElementById('btn2d').onclick = () => map.easeTo({pitch: 0, bearing: 0});
     document.getElementById('btn3d').onclick = () => map.easeTo({pitch: 60, bearing: -20});
 }
@@ -263,6 +277,30 @@ window.restoreRoute = (sf, st, fa, ta) => {
     document.getElementById('from').value = fa;
     document.getElementById('to').value = ta;
     build();
+};
+
+// ЛОГИКА СВОЕЙ ЦЕНЫ
+document.getElementById('custom').onclick = () => {
+    document.getElementById('modal-price').style.display = 'flex';
+    document.getElementById('modalMinPrice').innerText = minPrice;
+    document.getElementById('priceInput').value = minPrice;
+    document.getElementById('priceSlider').min = minPrice;
+    document.getElementById('priceSlider').max = minPrice * 3;
+    document.getElementById('priceSlider').value = minPrice;
+};
+
+// Синхронизация слайдера и инпута
+document.getElementById('priceSlider').oninput = (e) => {
+    document.getElementById('priceInput').value = e.target.value;
+};
+document.getElementById('priceInput').oninput = (e) => {
+    document.getElementById('priceSlider').value = e.target.value;
+};
+
+document.getElementById('submitPrice').onclick = () => {
+    const val = document.getElementById('priceInput').value;
+    document.getElementById('price').innerText = val;
+    document.getElementById('modal-price').style.display = 'none';
 };
 
 document.getElementById('startBtn').onclick = () => {
