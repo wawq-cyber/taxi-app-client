@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Taxi Stable v17 - Locked Session</title>
+<title>Taxi Stable v18 - Final Polish</title>
 
 <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
 <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet"/>
@@ -15,7 +15,7 @@
     /* START SCREEN */
     .start {
         position:fixed; inset:0; background:white;
-        display:flex; justify-content:center; align-items:center; z-index:1000;
+        display:flex; justify(content):center; align-items:center; z-index:1000;
     }
     .box { width:300px; text-align: center; }
     .input { width:100%; padding:12px; margin-bottom:10px; border-radius:10px; border:1px solid #ddd; box-sizing: border-box; }
@@ -26,8 +26,8 @@
     .top { position:absolute; top:15px; left:10px; width:320px; z-index:10; transition: opacity 0.3s; }
     .box2 { background:white; padding:10px; border-radius:15px; box-shadow:0 4px 15px rgba(0,0,0,0.1); }
     .input2 { width:100%; padding:10px; border-radius:10px; border:1px solid #eee; margin-bottom:6px; box-sizing: border-box; }
-    .suggest { background:white; max-height:180px; overflow:auto; border-radius:10px; }
-    .item { padding:10px; cursor:pointer; border-bottom:1px solid #eee; }
+    .suggest { background:white; max-height:180px; overflow-y:auto; border-radius:10px; box-shadow:0 4px 10px rgba(0,0,0,0.1); }
+    .item { padding:10px; cursor:pointer; border-bottom:1px solid #eee; font-size: 14px; }
     .item:hover { background:#f1f1f1; }
 
     /* BOTTOM PANEL */
@@ -39,14 +39,7 @@
     .row { display:flex; gap:10px; margin-top:10px; }
     .btn2 { flex:1; padding:12px; border:none; border-radius:10px; font-weight:bold; cursor:pointer; transition: 0.3s; }
     .order { background:#f1c40f; }
-    
-    /* СТИЛЬ ДЛЯ ЗАБЛОКИРОВАННОЙ КНОПКИ */
-    .order:disabled {
-        background: #ccc !important;
-        color: #888;
-        cursor: not-allowed;
-    }
-
+    .order:disabled { background: #ccc !important; color: #888; cursor: not-allowed; }
     .price-btn { background:#e74c3c; color:white; }
 
     /* STATUS NOTIFICATION */
@@ -79,13 +72,13 @@
 
 <div class="start" id="start">
     <div class="box">
-        <h3>Добро пожаловать</h3>
+        <h3>Taxi App</h3>
         <input id="name" class="input" placeholder="Ваше имя">
         <div style="display:flex; gap:6px; align-items:center; margin-bottom: 10px;">
             <span style="font-weight:bold;">+48</span>
             <input id="phone" class="input" style="margin-bottom:0;" placeholder="9 цифр" inputmode="numeric">
         </div>
-        <div class="error" id="phoneError">Неверный номер</div>
+        <div class="error" id="phoneError">Минимум 9 цифр</div>
         <button class="btn" id="startBtn">Начать</button>
     </div>
 </div>
@@ -101,10 +94,9 @@
 </div>
 
 <div class="panel" id="panel">
-    <div style="font-size: 14px; color: #666;">Имя: <b id="outName" style="color: #000;"></b></div>
+    <div style="font-size: 14px; color: #666;">Клиент: <b id="outName" style="color: #000;"></b></div>
     <hr style="border: 0; border-top: 1px solid #eee; margin: 10px 0;">
-    <div>Расстояние: <b id="km">0</b> км</div>
-    <div>Время: <b id="min">0</b> мин</div>
+    <div>Путь: <b id="km">0</b> км (<b id="min">0</b> мин)</div>
     <div style="font-size: 18px; margin-top: 5px;">Цена: <b id="price">0</b> zł</div>
     <div class="row">
         <button class="btn2 price-btn" id="customBtn">Своя цена</button>
@@ -116,7 +108,7 @@
     <div class="modal-content">
         <h3>Установить цену</h3>
         <div>Минимум: <b id="minPriceLabel"></b> zł</div>
-        <input id="priceInput" class="field" type="number" onfocus="this.value=''">
+        <input id="priceInput" class="field" type="number" placeholder="Сумма" onfocus="this.value=''">
         <input id="priceSlider" class="field" type="range" style="padding:0;">
         <button id="submitPrice" class="btn2 order">Применить</button>
     </div>
@@ -125,10 +117,10 @@
 <div class="modal" id="modal-timeout">
     <div class="modal-content" style="text-align:center;">
         <div style="font-size: 50px;">⏳</div>
-        <h3>Машина не найдена</h3>
-        <p>Продолжить поиск или отменить?</p>
+        <h3>Нет машин</h3>
+        <p>Поиск длится слишком долго. Продолжить?</p>
         <div class="row">
-            <button class="btn2" id="timeout-cancel" style="background:#eee;">Отменить</button>
+            <button class="btn2" id="timeout-cancel" style="background:#eee;">Отмена</button>
             <button class="btn2 order" id="timeout-continue">Продолжить</button>
         </div>
     </div>
@@ -162,14 +154,20 @@
     let currentOrderId = localStorage.getItem('activeOrderId');
     let searchTimer = null;
     let isOrderActive = false;
+    let activeInputType = 'from';
 
     // --- КАРТА ---
     function initMap(center = [21.01, 52.23]) {
         map = new maplibregl.Map({
             container: 'map',
             style: 'https://api.maptiler.com/maps/streets-v4/style.json?key=umzJGOnUyr8Edm12MN9b',
-            center: center, zoom: 13
+            center: center, 
+            zoom: 13
         });
+
+        // Добавляем кнопки масштаба + -
+        map.addControl(new maplibregl.NavigationControl(), 'top-right');
+
         userMarker = new maplibregl.Marker({color:'blue'}).setLngLat(center).addTo(map);
         destMarker = new maplibregl.Marker({color:'red', draggable:true});
 
@@ -180,12 +178,56 @@
             document.getElementById('to').value = await reverseGeocode(toCoords);
             calculateRoute();
         });
+
+        destMarker.on('dragend', async () => {
+            if (isOrderActive) return;
+            toCoords = [destMarker.getLngLat().lng, destMarker.getLngLat().lat];
+            document.getElementById('to').value = await reverseGeocode(toCoords);
+            calculateRoute();
+        });
     }
+
+    // --- ПОИСК АДРЕСОВ (Autocomplete) ---
+    async function searchAddresses(q) {
+        if(q.length < 3 || isOrderActive) return;
+        const r = await fetch(`https://api.maptiler.com/geocoding/${encodeURIComponent(q)}.json?key=umzJGOnUyr8Edm12MN9b&limit=5`);
+        const d = await r.json();
+        const box = document.getElementById('suggest');
+        box.innerHTML = '';
+
+        d.features.forEach(p => {
+            const el = document.createElement('div');
+            el.className = 'item';
+            el.innerText = p.place_name;
+            el.onclick = () => {
+                if(activeInputType === 'from') {
+                    fromCoords = p.center;
+                    document.getElementById('from').value = p.place_name;
+                    userMarker.setLngLat(fromCoords);
+                } else {
+                    toCoords = p.center;
+                    document.getElementById('to').value = p.place_name;
+                    destMarker.setLngLat(toCoords).addTo(map);
+                }
+                box.innerHTML = '';
+                calculateRoute();
+            };
+            box.appendChild(el);
+        });
+    }
+
+    document.getElementById('from').oninput = (e) => { activeInputType = 'from'; searchAddresses(e.target.value); };
+    document.getElementById('to').oninput = (e) => { activeInputType = 'to'; searchAddresses(e.target.value); };
+
+    // --- НОМЕР ТЕЛЕФОНА (Только цифры) ---
+    const phoneInput = document.getElementById('phone');
+    phoneInput.addEventListener('input', () => {
+        phoneInput.value = phoneInput.value.replace(/\D/g, '').slice(0, 9);
+    });
 
     // --- ВОССТАНОВЛЕНИЕ СЕССИИ ---
     async function checkSession() {
         if (!currentOrderId) return;
-        
         const snap = await get(ref(db, `orders/${currentOrderId}`));
         const order = snap.val();
 
@@ -193,33 +235,23 @@
             isOrderActive = true;
             document.getElementById('start').style.display = 'none';
             document.getElementById('name').value = order.clientName;
-            document.getElementById('phone').value = order.clientPhone.replace('+48', '');
+            phoneInput.value = order.clientPhone.replace('+48', '');
             document.getElementById('from').value = order.fromAddress;
             document.getElementById('to').value = order.toAddress;
-            
             fromCoords = order.clientCoords;
             toCoords = order.destCoords;
             currentCustomPrice = order.price;
 
             initMap(fromCoords);
-            
             map.on('load', () => {
                 calculateRoute(false);
-                // БЛОКИРУЕМ КНОПКУ ПРИ ВОССТАНОВЛЕНИИ
                 const btn = document.getElementById('orderBtn');
-                btn.disabled = true;
-                btn.innerText = "В поиске...";
-
-                if (order.status === 'accepted') {
-                    startTrackingDriver(order.assignedDriverId);
-                    showStatus(`<b>Водитель в пути!</b><br>Цена: ${order.price} zł`);
-                } else {
-                    startOrderSearch(true);
-                }
+                btn.disabled = true; btn.innerText = "В поиске...";
+                if (order.status === 'accepted') startTrackingDriver(order.assignedDriverId);
+                else startOrderSearch(true);
             });
         } else {
             localStorage.removeItem('activeOrderId');
-            currentOrderId = null;
         }
     }
 
@@ -227,7 +259,7 @@
     async function reverseGeocode(c) {
         const r = await fetch(`https://api.maptiler.com/geocoding/${c[0]},${c[1]}.json?key=umzJGOnUyr8Edm12MN9b`);
         const d = await r.json();
-        return d.features?.[0]?.place_name || 'Адрес не найден';
+        return d.features?.[0]?.place_name || 'Адрес...';
     }
 
     async function calculateRoute(resetPrice = true) {
@@ -254,7 +286,7 @@
         map.fitBounds([fromCoords, toCoords], { padding: 80 });
     }
 
-    // --- ЦЕНА ---
+    // --- ЛОГИКА ЦЕНЫ ---
     const pInput = document.getElementById('priceInput');
     const pSlider = document.getElementById('priceSlider');
 
@@ -280,30 +312,26 @@
         document.getElementById('modal-price').style.display = 'none';
     };
 
-    // --- ПОИСК И ЗАКАЗ ---
+    // --- ПОИСК И СТАТУС ---
     async function startOrderSearch(isRecovery = false) {
         isOrderActive = true;
-        
-        // Блокировка кнопки и интерфейса
         const btn = document.getElementById('orderBtn');
-        btn.disabled = true;
-        btn.innerText = "В поиске...";
+        btn.disabled = true; btn.innerText = "В поиске...";
         document.getElementById('top-search').style.opacity = '0.5';
         document.getElementById('top-search').style.pointerEvents = 'none';
 
-        // Анимация 3D
         map.fitBounds([fromCoords, toCoords], { padding: 100, duration: 2000 });
         setTimeout(() => map.easeTo({ pitch: 60, bearing: -10, duration: 1500 }), 500);
 
         showStatus(`
-            <div class="loader"></div> Поиск машины...<br>
+            <div class="loader"></div> Ищем машину...<br>
             <small>Стоимость поездки: <b>${currentCustomPrice} zł</b></small>
         `, true);
 
         if (!isRecovery) {
             const orderData = {
                 clientName: document.getElementById('name').value,
-                clientPhone: "+48" + document.getElementById('phone').value,
+                clientPhone: "+48" + phoneInput.value,
                 fromAddress: document.getElementById('from').value,
                 toAddress: document.getElementById('to').value,
                 clientCoords: fromCoords,
@@ -348,10 +376,6 @@
     async function resetSystem() {
         if (currentOrderId) await remove(ref(db, `orders/${currentOrderId}`));
         localStorage.removeItem('activeOrderId');
-        // Возвращаем кнопку в исходное состояние (на случай если не перезагружаем)
-        const btn = document.getElementById('orderBtn');
-        btn.disabled = false;
-        btn.innerText = "Заказать";
         location.reload(); 
     }
 
@@ -365,9 +389,9 @@
         el.style.display = 'block';
     }
 
+    // --- СТАРТ ---
     document.getElementById('startBtn').onclick = () => {
-        const p = document.getElementById('phone').value;
-        if (!document.getElementById('name').value || p.length !== 9) {
+        if (!document.getElementById('name').value || phoneInput.value.length < 9) {
             document.getElementById('phoneError').style.display = 'block'; return;
         }
         document.getElementById('start').style.display = 'none';
