@@ -173,12 +173,17 @@ border-radius:8px;
 cursor:pointer;
 box-shadow:0 2px 8px rgba(0,0,0,0.2);
 }
+
+/* ДОПОЛНЕНИЕ: Стили для кнопок отмены и загрузки */
+.btn-cancel { background: #e74c3c; color: white; margin-top: 10px; }
+.loader { border: 3px solid #f3f3f3; border-top: 3px solid #f1c40f; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; display: inline-block; vertical-align: middle; margin-right: 8px; }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(3600deg); } }
 </style>
 </head>
 
 <body>
 
-<div id="driver-status" style="display:none; position:absolute; top:80px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); color:white; padding:10px 20px; border-radius:20px; z-index:1000; text-align:center; box-shadow:0 4px 10px rgba(0,0,0,0.2);"></div>
+<div id="driver-status" style="display:none; position:absolute; top:80px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); color:white; padding:10px 20px; border-radius:20px; z-index:1000; text-align:center; box-shadow:0 4px 10px rgba(0,0,0,0.2); width: 80%; max-width: 300px;"></div>
 
 <div class="start" id="start">
     <div class="box">
@@ -195,7 +200,7 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
 
 <div id="map"></div>
 
-<div class="top">
+<div class="top" id="top-search">
     <div class="box2">
         <input id="from" class="input2" placeholder="Откуда">
         <input id="to" class="input2" placeholder="Куда">
@@ -239,8 +244,7 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-  // ИЗМЕНЕНО: Добавил get и onValue в импорт для логики поиска и отслеживания
-  import { getDatabase, ref, push, set, get, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+  import { getDatabase, ref, push, set, get, onValue, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyAf-9-A72oCswBCQIilwuE6FEYt_MN2PbU",
@@ -256,9 +260,9 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
   const app = initializeApp(firebaseConfig);
   const db = getDatabase(app);
 
-  /* --- ДОБАВЛЕНО: Переменные и функции для логики назначения --- */
   let currentOrderId = null;
   let rejectedDrivers = [];
+  let searchTimer = null; // Таймер на 60 сек
   const alertSound = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
 
   function getDist(c1, c2) {
@@ -269,11 +273,35 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
       return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   }
 
-  function showStatus(text) {
+  function showStatus(text, showCancel = false) {
       const el = document.getElementById('driver-status');
-      if (text) { el.innerHTML = text; el.style.display = 'block'; }
+      if (text) { 
+          el.innerHTML = text; 
+          if(showCancel) {
+              el.innerHTML += `<br><button class="btn btn-cancel" id="cancelOrderAction">Отменить заказ</button>`;
+              setTimeout(() => {
+                const btn = document.getElementById('cancelOrderAction');
+                if(btn) btn.onclick = () => window.resetOrderUI();
+              }, 100);
+          }
+          el.style.display = 'block'; 
+      }
       else { el.style.display = 'none'; }
   }
+
+  // Функция сброса интерфейса при отмене или ошибке
+  window.resetOrderUI = async function() {
+      clearTimeout(searchTimer);
+      if(currentOrderId) {
+          await remove(ref(db, `orders/${currentOrderId}`));
+          currentOrderId = null;
+      }
+      rejectedDrivers = [];
+      showStatus("");
+      document.getElementById('panel').style.display = 'block';
+      document.getElementById('top-search').style.pointerEvents = 'auto';
+      document.getElementById('top-search').style.opacity = '1';
+  };
 
   window.trackDriver = function(driverId) {
       onValue(ref(db, `drivers/${driverId}/coords`), (snap) => {
@@ -289,33 +317,45 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
               window.driverMarker.setLngLat(coords);
           }
           
-          // Уведомление, если водитель ближе 400 метров
           if (getDist(coords, window.clientCoords) < 0.4) {
               showStatus("<b>Такси подъезжает!</b><br>Пожалуйста, выходите.");
               alertSound.play().catch(()=>{});
           }
       });
   };
-  /* ----------------------------------------------------------- */
 
-  // Глобальная функция отправки заказа (ВНУТРИ ПОЛНОСТЬЮ ПЕРЕПИСАНА ПОД АЛГОРИТМ)
   window.sendOrderToFirebase = async function() {
     const name = document.getElementById('name').value;
     const phoneVal = document.getElementById('phone').value;
     
-    showStatus("Ищем ближайшую машину...");
+    // Фиксируем UI
+    document.getElementById('panel').style.display = 'none';
+    document.getElementById('top-search').style.pointerEvents = 'none';
+    document.getElementById('top-search').style.opacity = '0.5';
+    showStatus(`<div class="loader"></div> Ищем ближайшую машину...`, true);
 
-    // Получаем базу водителей
+    // Запуск таймера 60 секунд (только при первом вызове)
+    if(!searchTimer) {
+        searchTimer = setTimeout(() => {
+            if(confirm("Водители не найдены. Попробовать еще раз?")) {
+                clearTimeout(searchTimer);
+                searchTimer = null;
+                window.sendOrderToFirebase(); 
+            } else {
+                window.resetOrderUI();
+            }
+        }, 60000);
+    }
+
     const driversSnap = await get(ref(db, 'drivers'));
     const drivers = driversSnap.val();
 
     if (!drivers || !window.clientCoords) {
-        alert("Нет свободных водителей или не определено ваше местоположение.");
-        showStatus("");
+        alert("Нет свободных водителей.");
+        window.resetOrderUI();
         return;
     }
 
-    // Ищем самого близкого из тех, кто онлайн и не в списке отказавшихся
     let nearest = Object.keys(drivers)
         .map(id => ({id, ...drivers[id]}))
         .filter(d => d.status === 'online' && !rejectedDrivers.includes(d.id))
@@ -324,8 +364,7 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
 
     if (!nearest) {
         alert("К сожалению, все ближайшие водители сейчас заняты.");
-        rejectedDrivers = []; // Сброс для новой попытки
-        showStatus("");
+        window.resetOrderUI();
         return;
     }
 
@@ -334,12 +373,12 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
         clientPhone: "+48" + phoneVal,
         fromAddress: document.getElementById('from').value,
         toAddress: document.getElementById('to').value,
-        clientCoords: window.clientCoords, // ДОБАВЛЕНО
+        clientCoords: window.clientCoords,
         distance: document.getElementById('km').innerText,
         duration: document.getElementById('min').innerText,
         price: window.customPrice || window.minPrice,
-        status: "searching", // ИЗМЕНЕНО: теперь статус 'searching', а не 'new'
-        assignedDriverId: nearest.id, // ДОБАВЛЕНО: ID конкретного водителя
+        status: "searching",
+        assignedDriverId: nearest.id,
         createdAt: Date.now()
     };
 
@@ -350,27 +389,28 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
         }
         
         await set(ref(db, 'orders/' + currentOrderId), orderData);
-        showStatus(`Предлагаем заказ водителю: ${nearest.name}...`);
+        showStatus(`<div class="loader"></div> Предлагаем заказ водителю: ${nearest.name}...`, true);
         
-        // Слушатель статуса: ждем ответа от водителя
         onValue(ref(db, 'orders/' + currentOrderId), (snap) => {
             const order = snap.val();
             if (!order) return;
             
             if (order.status === 'rejected') {
                 rejectedDrivers.push(order.assignedDriverId);
-                window.sendOrderToFirebase(); // Автоматически пробуем следующего
+                window.sendOrderToFirebase(); 
             }
             
             if (order.status === 'accepted') {
+                clearTimeout(searchTimer);
+                searchTimer = null;
                 showStatus(`<b>Водитель принял заказ!</b><br>Машина выехала к вам.`);
-                document.getElementById('panel').style.display = 'none';
-                window.trackDriver(order.assignedDriverId); // Запускаем слежку на карте
+                window.trackDriver(order.assignedDriverId);
             }
         });
 
     } catch (e) {
-        alert("Ошибка базы данных: " + e.message);
+        alert("Ошибка: " + e.message);
+        window.resetOrderUI();
     }
   };
 </script>
@@ -384,13 +424,11 @@ let activeInput=null;
 let customPrice=0;
 let destMarker;
 
-/* PHONE VALIDATION */
 const phone=document.getElementById('phone');
 phone.addEventListener('input',()=>{
     phone.value=phone.value.replace(/\D/g,'').slice(0,9);
 });
 
-/* START */
 document.getElementById('startBtn').onclick=()=>{
     if(!document.getElementById('name').value.trim()){
         alert("Введите имя");
@@ -444,7 +482,6 @@ async function reverse(c){
     return d.features?.[0]?.place_name||'';
 }
 
-/* SEARCH LOGIC */
 const fromInput=document.getElementById('from');
 const toInput=document.getElementById('to');
 fromInput.onfocus=()=>activeInput='from';
@@ -504,7 +541,6 @@ async function build(){
     map.fitBounds([from,to],{padding:80});
 }
 
-/* --- FIRE FIXES FOR PRICE LOGIC --- */
 function clampPrice(v) {
     v = Number(v);
     if (isNaN(v)) v = minPrice;
@@ -540,20 +576,17 @@ document.getElementById('submitPrice').onclick = () => {
     customPrice = val;
     document.getElementById('priceInput').value = val;
     document.getElementById('priceSlider').value = val;
-    document.getElementById('price').innerText = val; // Обновляем в главной панели
+    document.getElementById('price').innerText = val;
     document.getElementById('modal').style.display = 'none';
 };
 
-/* ORDER BUTTON CLICK */
 document.getElementById('orderBtn').onclick=()=>{
     window.sendOrderToFirebase();
 };
 
-/* 2D / 3D */
 document.getElementById('btn2d').onclick=()=>map.easeTo({pitch:0,bearing:0});
 document.getElementById('btn3d').onclick=()=>map.easeTo({pitch:60,bearing:-20});
 
-/* --- ДОБАВЛЕНО: Прокси для передачи твоих переменных в модуль Firebase --- */
 setInterval(() => {
     window.map = map;
     window.clientCoords = from;
