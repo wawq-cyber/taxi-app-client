@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Taxi Stable v14 FIREBASE (Memory & Fixes)</title>
+<title>Taxi Stable v15 FIREBASE (Auto-Save)</title>
 
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#f1c40f">
@@ -64,6 +64,7 @@ top:15px;
 left:10px;
 width:320px;
 z-index:10;
+transition: opacity 0.3s;
 }
 
 .box2 {
@@ -174,16 +175,16 @@ cursor:pointer;
 box-shadow:0 2px 8px rgba(0,0,0,0.2);
 }
 
-/* Стили для кнопок отмены и загрузки */
-.btn-cancel { background: #e74c3c; color: white; margin-top: 10px; }
-.loader { border: 3px solid #f3f3f3; border-top: 3px solid #f1c40f; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; display: inline-block; vertical-align: middle; margin-right: 8px; }
-@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(3600deg); } }
+/* UTILS */
+.btn-cancel { background: #e74c3c; color: white; margin-top: 10px; width: 100%; }
+.loader { border: 3px solid #f3f3f3; border-top: 3px solid #f1c40f; border-radius: 50%; width: 18px; height: 18px; animation: spin 1s linear infinite; display: inline-block; vertical-align: middle; margin-right: 8px; }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 </style>
 </head>
 
 <body>
 
-<div id="driver-status" style="display:none; position:absolute; top:80px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); color:white; padding:10px 20px; border-radius:20px; z-index:1000; text-align:center; box-shadow:0 4px 10px rgba(0,0,0,0.2); width: 80%; max-width: 300px;"></div>
+<div id="driver-status" style="display:none; position:absolute; top:80px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); color:white; padding:15px 25px; border-radius:20px; z-index:1000; text-align:center; box-shadow:0 4px 15px rgba(0,0,0,0.3); width: 80%; max-width: 320px;"></div>
 
 <div class="start" id="start">
     <div class="box">
@@ -191,7 +192,7 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
         <input id="name" class="input" placeholder="Имя">
         <div style="display:flex; gap:6px; align-items:center;">
             <span style="font-weight:bold;">+48</span>
-            <input id="phone" class="input" type="tel" placeholder="9 цифр" inputmode="numeric" oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 9);">
+            <input id="phone" class="input" placeholder="9 цифр" inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'').slice(0,9);">
         </div>
         <div class="error" id="phoneError">Неверный номер</div>
         <button class="btn" id="startBtn">Начать</button>
@@ -241,9 +242,9 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
     <div class="modal-content" style="text-align:center;">
         <div style="font-size: 50px; margin-bottom: 10px;">⏳</div>
         <h3>Водитель не найден</h3>
-        <p>Продолжить поиск или отменить заказ?</p>
+        <p style="color: #666; font-size: 14px; margin-bottom: 20px;">К сожалению, сейчас поблизости нет свободных машин. Хотите продолжить поиск или отменить заказ?</p>
         <div class="row">
-            <button class="btn2" id="timeout-cancel" style="background:#eee; color:#333;">Отменить</button>
+            <button class="btn2" id="timeout-cancel" style="background:#eee;">Отменить</button>
             <button class="btn2 order" id="timeout-continue">Продолжить</button>
         </div>
     </div>
@@ -272,11 +273,10 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
   const app = initializeApp(firebaseConfig);
   const db = getDatabase(app);
 
-  let currentOrderId = localStorage.getItem('activeOrderId'); 
+  let currentOrderId = localStorage.getItem('activeOrderId'); // Восстановление ID заказа
   let rejectedDrivers = [];
   let searchTimer = null;
   const alertSound = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
-  window.isOrderPending = false; 
 
   function getDist(c1, c2) {
       const R = 6371;
@@ -291,7 +291,7 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
       if (text) { 
           el.innerHTML = text; 
           if(showCancel) {
-              el.innerHTML += `<br><button class="btn btn-cancel" id="cancelOrderAction">Отменить заказ</button>`;
+              el.innerHTML += `<br><button class="btn btn-cancel" id="cancelOrderAction">Отменить поиск</button>`;
               setTimeout(() => {
                 const btn = document.getElementById('cancelOrderAction');
                 if(btn) btn.onclick = () => window.resetOrderUI();
@@ -308,7 +308,7 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
       window.isOrderPending = false; 
       if(currentOrderId) {
           await remove(ref(db, `orders/${currentOrderId}`));
-          localStorage.removeItem('activeOrderId'); 
+          localStorage.removeItem('activeOrderId'); // Удаляем при отмене
           currentOrderId = null;
       }
       rejectedDrivers = [];
@@ -316,6 +316,16 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
       document.getElementById('panel').style.display = 'block';
       document.getElementById('top-search').style.pointerEvents = 'auto';
       document.getElementById('top-search').style.opacity = '1';
+  };
+
+  document.getElementById('timeout-continue').onclick = () => {
+      document.getElementById('modal-timeout').style.display = 'none';
+      window.sendOrderToFirebase(); 
+  };
+
+  document.getElementById('timeout-cancel').onclick = () => {
+      document.getElementById('modal-timeout').style.display = 'none';
+      window.resetOrderUI();
   };
 
   window.trackDriver = function(driverId) {
@@ -340,18 +350,26 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
   };
 
   window.sendOrderToFirebase = async function() {
-    window.isOrderPending = true; 
     const name = document.getElementById('name').value;
     const phoneVal = document.getElementById('phone').value;
     
+    window.isOrderPending = true; 
+
     document.getElementById('panel').style.display = 'none';
     document.getElementById('top-search').style.pointerEvents = 'none';
     document.getElementById('top-search').style.opacity = '0.5';
-    showStatus(`<div class="loader"></div> Ищем ближайшую машину...`, true);
+    showStatus(`<div class="loader"></div> Поиск машины...`, true);
 
     if(!searchTimer) {
         searchTimer = setTimeout(() => {
-            document.getElementById('modal-timeout').style.display = 'flex';
+            if (currentOrderId) {
+                get(ref(db, 'orders/' + currentOrderId)).then((snap) => {
+                    const order = snap.val();
+                    if (order && order.status === 'searching') {
+                        document.getElementById('modal-timeout').style.display = 'flex';
+                    }
+                });
+            }
         }, 60000);
     }
 
@@ -359,8 +377,7 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
     const drivers = driversSnap.val();
 
     if (!drivers || !window.clientCoords) {
-        alert("Нет свободных водителей.");
-        window.resetOrderUI();
+        document.getElementById('modal-timeout').style.display = 'flex';
         return;
     }
 
@@ -371,7 +388,7 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
         .sort((a,b) => a.dist - b.dist)[0];
 
     if (!nearest) {
-        document.getElementById('modal-timeout').style.display = 'flex'; 
+        document.getElementById('modal-timeout').style.display = 'flex';
         return;
     }
 
@@ -381,7 +398,7 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
         fromAddress: document.getElementById('from').value,
         toAddress: document.getElementById('to').value,
         clientCoords: window.clientCoords,
-        destCoords: window.destCoords, 
+        destCoords: window.destCoords,
         distance: document.getElementById('km').innerText,
         duration: document.getElementById('min').innerText,
         price: window.customPrice || window.minPrice,
@@ -394,12 +411,13 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
         if (!currentOrderId) {
             const newOrderRef = push(ref(db, 'orders'));
             currentOrderId = newOrderRef.key;
-            localStorage.setItem('activeOrderId', currentOrderId); 
+            localStorage.setItem('activeOrderId', currentOrderId); // Сохраняем ID заказа
         }
         
         await set(ref(db, 'orders/' + currentOrderId), orderData);
         showStatus(`<div class="loader"></div> Предлагаем заказ водителю: ${nearest.name}...`, true);
         
+        // Слушаем изменения статуса
         onValue(ref(db, 'orders/' + currentOrderId), (snap) => {
             const order = snap.val();
             if (!order) return;
@@ -423,6 +441,257 @@ box-shadow:0 2px 8px rgba(0,0,0,0.2);
     }
   };
 
+  // ФУНКЦИЯ ВОССТАНОВЛЕНИЯ ЗАКАЗА ПОСЛЕ ПЕРЕЗАГРУЗКИ
   window.checkActiveOrder = async function() {
       if (!currentOrderId) return;
-      const snap = await get(ref
+      
+      const snap = await get(ref(db, `orders/${currentOrderId}`));
+      const order = snap.val();
+      
+      if (order && (order.status === 'searching' || order.status === 'accepted')) {
+          window.isOrderPending = true;
+          document.getElementById('top-search').style.pointerEvents = 'none';
+          document.getElementById('top-search').style.opacity = '0.5';
+          
+          // Восстанавливаем маршрут на карте
+          if (window.restoreRoute) {
+              window.restoreRoute(order.clientCoords, order.destCoords, order.fromAddress, order.toAddress);
+          }
+          
+          if (order.status === 'searching') {
+              showStatus(`<div class="loader"></div> Поиск продолжается...`, true);
+              searchTimer = setTimeout(() => { document.getElementById('modal-timeout').style.display = 'flex'; }, 60000);
+          } else {
+              showStatus(`<b>Водитель принял заказ!</b><br>Машина выехала к вам.`);
+              window.trackDriver(order.assignedDriverId);
+          }
+          
+          // Возобновляем прослушивание
+          onValue(ref(db, 'orders/' + currentOrderId), (snap) => {
+              const o = snap.val();
+              if (o && o.status === 'accepted') {
+                  showStatus(`<b>Водитель принял заказ!</b><br>Машина выехала к вам.`);
+                  window.trackDriver(o.assignedDriverId);
+              }
+          });
+      } else {
+          localStorage.removeItem('activeOrderId');
+          currentOrderId = null;
+      }
+  };
+</script>
+
+<script>
+let map;
+let from=null;
+let to=null;
+let minPrice=0;
+let activeInput=null;
+let customPrice=0;
+let destMarker;
+window.isOrderPending = false; 
+
+const phone=document.getElementById('phone');
+
+function initApp() {
+    document.getElementById('start').style.display='none';
+
+    map=new maplibregl.Map({
+        container:'map',
+        style:'https://api.maptiler.com/maps/streets-v4/style.json?key=umzJGOnUyr8Edm12MN9b',
+        center:[21.01,52.23],
+        zoom:13,
+        pitch:45
+    });
+
+    map.addControl(new maplibregl.NavigationControl());
+    const userMarker=new maplibregl.Marker({color:'blue'});
+    destMarker = new maplibregl.Marker({color:'red', draggable:true});
+
+    map.on('load',()=>{ 
+        userMarker.addTo(map); 
+        // При загрузке карты проверяем, нет ли активного заказа
+        if(window.checkActiveOrder) window.checkActiveOrder();
+    });
+
+    navigator.geolocation.getCurrentPosition(async p=>{
+        if(window.isOrderPending) return;
+        from=[p.coords.longitude,p.coords.latitude];
+        userMarker.setLngLat(from);
+        map.flyTo({center:from,zoom:15});
+        document.getElementById('from').value=await reverse(from);
+    });
+
+    map.on('click',async e=>{
+        if(window.isOrderPending) return; 
+        to=[e.lngLat.lng,e.lngLat.lat];
+        destMarker.setLngLat(to).addTo(map);
+        document.getElementById('to').value=await reverse(to);
+        build();
+    });
+
+    destMarker.on('dragend',async()=>{
+        if(window.isOrderPending) { 
+            destMarker.setLngLat(to);
+            return;
+        }
+        const p=destMarker.getLngLat();
+        to=[p.lng,p.lat];
+        document.getElementById('to').value=await reverse(to);
+        build();
+    });
+}
+
+document.getElementById('startBtn').onclick=()=>{
+    const nameVal = document.getElementById('name').value.trim();
+    if(!nameVal){
+        alert("Введите имя");
+        return;
+    }
+    if(phone.value.length!==9){
+        document.getElementById('phoneError').style.display='block';
+        return;
+    }
+    // Сохраняем данные пользователя
+    localStorage.setItem('userName', nameVal);
+    localStorage.setItem('userPhone', phone.value);
+    initApp();
+};
+
+// АВТО-ВХОД
+if(localStorage.getItem('userName') && localStorage.getItem('userPhone')) {
+    document.getElementById('name').value = localStorage.getItem('userName');
+    document.getElementById('phone').value = localStorage.getItem('userPhone');
+    initApp();
+}
+
+async function reverse(c){
+    const r=await fetch(`https://api.maptiler.com/geocoding/${c[0]},${c[1]}.json?key=umzJGOnUyr8Edm12MN9b`);
+    const d=await r.json();
+    return d.features?.[0]?.place_name||'';
+}
+
+const fromInput=document.getElementById('from');
+const toInput=document.getElementById('to');
+fromInput.onfocus=()=>activeInput='from';
+toInput.onfocus=()=>activeInput='to';
+
+[fromInput,toInput].forEach(i=>{
+    i.oninput=()=>search(i.value);
+});
+
+async function search(q){
+    if(q.length<3)return;
+    const r=await fetch(`https://api.maptiler.com/geocoding/${encodeURIComponent(q)}.json?key=umzJGOnUyr8Edm12MN9b&limit=5`);
+    const d=await r.json();
+    const box=document.getElementById('suggest');
+    box.innerHTML='';
+
+    d.features.forEach(p=>{
+        const el=document.createElement('div');
+        el.className='item';
+        el.innerText=p.place_name;
+        el.onclick=()=>{
+            if(activeInput==='from'){ from=p.center; document.getElementById('from').value=p.place_name; }
+            if(activeInput==='to'){ to=p.center; document.getElementById('to').value=p.place_name; }
+            box.innerHTML='';
+            build();
+        };
+        box.appendChild(el);
+    });
+}
+
+async function build(){
+    if(!from||!to)return;
+    const r=await fetch(`https://router.project-osrm.org/route/v1/driving/${from[0]},${from[1]};${to[0]},${to[1]}?overview=full&geometries=geojson`);
+    const d=await r.json();
+    const route=d.routes[0];
+    const km=(route.distance/1000).toFixed(1);
+    const min=Math.round(route.duration/60);
+    minPrice=Math.round(km*2.5+10);
+
+    document.getElementById('panel').style.display='block';
+    document.getElementById('outName').innerText=document.getElementById('name').value;
+    document.getElementById('outPhone').innerText='+48 '+phone.value;
+    document.getElementById('km').innerText=km;
+    document.getElementById('min').innerText=min;
+    document.getElementById('price').innerText=minPrice;
+
+    if(map.getSource('route')){
+        map.getSource('route').setData(route.geometry);
+    }else{
+        map.addSource('route',{type:'geojson',data:route.geometry});
+        map.addLayer({
+            id:'route', type:'line', source:'route',
+            paint:{'line-color':'#f1c40f','line-width':5}
+        });
+    }
+    destMarker.setLngLat(to).addTo(map);
+    map.fitBounds([from,to],{padding:80});
+}
+
+// Служебная функция для восстановления маршрута
+window.restoreRoute = async function(savedFrom, savedTo, fromAddr, toAddr) {
+    from = savedFrom;
+    to = savedTo;
+    document.getElementById('from').value = fromAddr;
+    document.getElementById('to').value = toAddr;
+    await build();
+};
+
+function clampPrice(v) {
+    v = Number(v);
+    if (isNaN(v)) v = minPrice;
+    if (v < minPrice) v = minPrice;
+    return v;
+}
+
+document.getElementById('custom').onclick=()=>{
+    document.getElementById('modal').style.display='flex';
+    document.getElementById('minPrice').innerText=minPrice;
+    customPrice=minPrice;
+    document.getElementById('priceInput').value=minPrice;
+    document.getElementById('priceSlider').min=minPrice;
+    document.getElementById('priceSlider').max=minPrice*3;
+    document.getElementById('priceSlider').step=1;
+    document.getElementById('priceSlider').value=minPrice;
+};
+
+document.getElementById('priceInput').oninput = (e) => {
+    customPrice = clampPrice(e.target.value);
+    document.getElementById('priceInput').value = customPrice;
+    document.getElementById('priceSlider').value = customPrice;
+};
+
+document.getElementById('priceSlider').oninput = (e) => {
+    customPrice = clampPrice(e.target.value);
+    document.getElementById('priceInput').value = customPrice;
+    document.getElementById('priceSlider').value = customPrice;
+};
+
+document.getElementById('submitPrice').onclick = () => {
+    const val = clampPrice(customPrice);
+    customPrice = val;
+    document.getElementById('priceInput').value = val;
+    document.getElementById('priceSlider').value = val;
+    document.getElementById('price').innerText = val;
+    document.getElementById('modal').style.display = 'none';
+};
+
+document.getElementById('orderBtn').onclick=()=>{
+    window.sendOrderToFirebase();
+};
+
+document.getElementById('btn2d').onclick=()=>map.easeTo({pitch:0,bearing:0});
+document.getElementById('btn3d').onclick=()=>map.easeTo({pitch:60,bearing:-20});
+
+setInterval(() => {
+    window.map = map;
+    window.clientCoords = from;
+    window.destCoords = to;
+    window.customPrice = customPrice;
+    window.minPrice = minPrice;
+}, 200);
+</script>
+</body>
+</html>
